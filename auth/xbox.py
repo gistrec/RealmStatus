@@ -1,9 +1,24 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import TypedDict, cast
 
 import requests
 
 from db import get_setting, set_setting
+
+
+class _XboxDisplayClaim(TypedDict):
+    uhs: str
+
+
+class _XboxDisplayClaims(TypedDict):
+    xui: list[_XboxDisplayClaim]
+
+
+class _XboxTokenResponse(TypedDict, total=False):
+    Token: str
+    NotAfter: str
+    DisplayClaims: _XboxDisplayClaims
 
 
 class XboxAuth:
@@ -19,7 +34,7 @@ class XboxAuth:
     XSTS_UHS_KEY = "xsts_user_hash"
 
     @staticmethod
-    def _parse_not_after(data: dict, fallback_seconds: int = 23 * 3600) -> int:
+    def _parse_not_after(data: _XboxTokenResponse, fallback_seconds: int = 23 * 3600) -> int:
         not_after = data.get("NotAfter")
         if not_after:
             try:
@@ -29,17 +44,23 @@ class XboxAuth:
                 pass
         return int(time.time()) + fallback_seconds
 
-    def _store_xbl(self, data: dict) -> tuple[str, str]:
-        token = data["Token"]
-        uhs = data["DisplayClaims"]["xui"][0]["uhs"]
+    def _store_xbl(self, data: _XboxTokenResponse) -> tuple[str, str]:
+        token = data.get("Token")
+        claims = data.get("DisplayClaims")
+        if not token or claims is None or not claims["xui"]:
+            raise RuntimeError("Xbox Live auth response is missing required fields")
+        uhs = claims["xui"][0]["uhs"]
         set_setting(self.XBL_TOKEN_KEY, token)
         set_setting(self.XBL_UHS_KEY, uhs)
         set_setting(self.XBL_EXPIRES_KEY, str(self._parse_not_after(data)))
         return token, uhs
 
-    def _store_xsts(self, data: dict) -> tuple[str, str]:
-        token = data["Token"]
-        uhs = data["DisplayClaims"]["xui"][0]["uhs"]
+    def _store_xsts(self, data: _XboxTokenResponse) -> tuple[str, str]:
+        token = data.get("Token")
+        claims = data.get("DisplayClaims")
+        if not token or claims is None or not claims["xui"]:
+            raise RuntimeError("XSTS auth response is missing required fields")
+        uhs = claims["xui"][0]["uhs"]
         set_setting(self.XSTS_TOKEN_KEY, token)
         set_setting(self.XSTS_UHS_KEY, uhs)
         set_setting(self.XSTS_EXPIRES_KEY, str(self._parse_not_after(data)))
@@ -77,7 +98,7 @@ class XboxAuth:
         )
 
         r.raise_for_status()
-        data = r.json()
+        data = cast(_XboxTokenResponse, r.json())
 
         return self._store_xbl(data)
 
@@ -112,6 +133,6 @@ class XboxAuth:
         )
 
         r.raise_for_status()
-        data = r.json()
+        data = cast(_XboxTokenResponse, r.json())
 
         return self._store_xsts(data)

@@ -2,10 +2,18 @@ import time
 import os
 import base64
 import hashlib
-import requests
 from urllib.parse import urlencode
+from typing import TypedDict, cast
+
+import requests
 
 from db import get_setting, set_setting
+
+
+class _MicrosoftTokenResponse(TypedDict, total=False):
+    access_token: str
+    refresh_token: str
+    expires_in: int
 
 
 class MicrosoftAuth:
@@ -24,7 +32,7 @@ class MicrosoftAuth:
     # ---------- PKCE ----------
 
     @staticmethod
-    def _gen_pkce():
+    def _gen_pkce() -> tuple[str, str]:
         verifier = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
         challenge = base64.urlsafe_b64encode(
             hashlib.sha256(verifier.encode()).digest()
@@ -42,7 +50,7 @@ class MicrosoftAuth:
 
         return self._refresh_token()
 
-    def login(self):
+    def login(self) -> str:
         verifier, challenge = self._gen_pkce()
         set_setting(self.PKCE_VERIFIER_KEY, verifier)
 
@@ -86,7 +94,7 @@ class MicrosoftAuth:
             timeout=15,
         )
         r.raise_for_status()
-        data = r.json()
+        data = cast(_MicrosoftTokenResponse, r.json())
 
         return self._store_tokens(data)
 
@@ -106,19 +114,25 @@ class MicrosoftAuth:
             timeout=15,
         )
         r.raise_for_status()
-        data = r.json()
+        data = cast(_MicrosoftTokenResponse, r.json())
 
         return self._store_tokens(data)
 
-    def _store_tokens(self, data: dict) -> str:
-        set_setting(self.ACCESS_TOKEN_KEY, data["access_token"])
+    def _store_tokens(self, data: _MicrosoftTokenResponse) -> str:
+        access_token = data.get("access_token")
+        expires_in = data.get("expires_in")
+        if not access_token or not isinstance(expires_in, int):
+            raise RuntimeError("Microsoft token response is missing required fields")
+
+        set_setting(self.ACCESS_TOKEN_KEY, access_token)
 
         if "refresh_token" in data:
-            set_setting(self.REFRESH_TOKEN_KEY, data["refresh_token"])
+            refresh_token = data["refresh_token"]
+            set_setting(self.REFRESH_TOKEN_KEY, refresh_token)
 
         set_setting(
             self.EXPIRES_KEY,
-            str(int(time.time()) + int(data["expires_in"]) - 60)
+            str(int(time.time()) + expires_in - 60)
         )
 
-        return data["access_token"]
+        return access_token

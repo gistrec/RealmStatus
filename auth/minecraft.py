@@ -1,8 +1,14 @@
 import time
+from typing import TypedDict, cast
 
 import requests
 
 from db import get_setting, set_setting
+
+
+class _MinecraftTokenResponse(TypedDict, total=False):
+    access_token: str
+    expires_in: int
 
 
 class MinecraftAuth:
@@ -14,7 +20,7 @@ class MinecraftAuth:
     MC_TOKEN_KEY = "mc_token"
     MC_EXPIRES_KEY = "mc_token_expires"
 
-    def _realm_cookies(self, mc_token: str, uuid: str, name: str) -> dict:
+    def _realm_cookies(self, mc_token: str, uuid: str, name: str) -> dict[str, str]:
         return {
             "sid": f"token:{mc_token}:{uuid}",
             "user": name,
@@ -44,16 +50,18 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        data = r.json()
+        data = cast(_MinecraftTokenResponse, r.json())
 
-        token = data["access_token"]
+        token = data.get("access_token")
+        if not token:
+            raise RuntimeError("Minecraft auth response is missing access token")
         set_setting(self.MC_TOKEN_KEY, token)
         expires_in = int(data.get("expires_in", 23 * 3600))
         set_setting(self.MC_EXPIRES_KEY, str(int(time.time()) + expires_in - 60))
 
         return token
 
-    def check_realms_available(self, mc_token, uuid, name):
+    def check_realms_available(self, mc_token: str, uuid: str, name: str) -> dict[str, object]:
         """
         Check if Realms service is available for user
         """
@@ -62,9 +70,9 @@ class MinecraftAuth:
             cookies=self._realm_cookies(mc_token, uuid, name),
             timeout=15,
         )
-        return r.json()
+        return cast(dict[str, object], r.json())
 
-    def get_profile(self, mc_token: str) -> dict:
+    def get_profile(self, mc_token: str) -> dict[str, object]:
         """
         Get Minecraft profile info
         """
@@ -77,10 +85,10 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, object], r.json())
 
 
-    def get_worlds(self, mc_token, uuid, name):
+    def get_worlds(self, mc_token: str, uuid: str, name: str) -> dict[str, object]:
         """
         Get list of all Realms worlds
         """
@@ -89,10 +97,10 @@ class MinecraftAuth:
             cookies=self._realm_cookies(mc_token, uuid, name),
             timeout=15,
         )
-        return r.json()
+        return cast(dict[str, object], r.json())
 
 
-    def get_world_info(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict:
+    def get_world_info(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict[str, object]:
         """
         Get info about a specific Realm world
         """
@@ -103,10 +111,10 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, object], r.json())
 
 
-    def get_world_backups(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict:
+    def get_world_backups(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict[str, object]:
         """
         Get info about a specific Realm world
         """
@@ -117,10 +125,10 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, object], r.json())
 
 
-    def get_world_last_backup(self, mc_token: str, uuid: str, name: str, world_id: int, slot: int) -> dict:
+    def get_world_last_backup(self, mc_token: str, uuid: str, name: str, world_id: int, slot: int) -> dict[str, object]:
         """
         Get info about a specific Realm world
         """
@@ -131,10 +139,10 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, object], r.json())
 
 
-    def get_realm_ip(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict:
+    def get_realm_ip(self, mc_token: str, uuid: str, name: str, world_id: int) -> dict[str, object]:
         """
         Get info about a specific Realm world
         """
@@ -145,4 +153,4 @@ class MinecraftAuth:
         )
 
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, object], r.json())

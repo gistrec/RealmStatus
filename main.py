@@ -1,4 +1,5 @@
 import asyncio
+from typing import TypedDict, cast
 
 from requests import HTTPError
 
@@ -13,6 +14,32 @@ from db import set_setting
 LAST_BACKUP_URL = "last_backup_url"
 
 
+class MinecraftProfile(TypedDict):
+    id: str
+    name: str
+
+
+class RealmPlayer(TypedDict):
+    name: str
+    online: bool
+
+
+class RealmWorld(TypedDict):
+    id: int
+
+
+class RealmWorldsResponse(TypedDict):
+    servers: list[RealmWorld]
+
+
+class RealmWorldInfoResponse(TypedDict):
+    players: list[RealmPlayer]
+
+
+class RealmBackupResponse(TypedDict):
+    downloadLink: str
+
+
 def _is_auth_error(error: HTTPError) -> bool:
     response = getattr(error, "response", None)
     if response is None:
@@ -20,7 +47,7 @@ def _is_auth_error(error: HTTPError) -> bool:
     return response.status_code in {401, 403}
 
 
-async def main():
+async def main() -> None:
     ms = MicrosoftAuth()
     xbox = XboxAuth()
     mc = MinecraftAuth()
@@ -28,7 +55,7 @@ async def main():
     # Microsoft
     try:
         token = ms.get_access_token()
-    except:
+    except Exception:
         token = ms.login()
 
     # Xbox
@@ -52,31 +79,32 @@ async def main():
         mc_token = mc.authenticate(xsts_token, uhs)
 
     try:
-        profile = mc.get_profile(mc_token)
+        profile = cast(MinecraftProfile, mc.get_profile(mc_token))
     except HTTPError as error:
         if not _is_auth_error(error):
             raise
         mc_token = mc.authenticate(xsts_token, uhs)
-        profile = mc.get_profile(mc_token)
+        profile = cast(MinecraftProfile, mc.get_profile(mc_token))
 
     uuid = profile["id"]
     name = profile["name"]
 
     print(f"Logged in as: {name}")
 
-    for world in mc.get_worlds(mc_token, uuid, name)["servers"]:
+    worlds = cast(RealmWorldsResponse, mc.get_worlds(mc_token, uuid, name))
+    for world in worlds["servers"]:
         if world["id"] != 12829680:
             continue
 
         print("=== world info ===")
-        world_info = mc.get_world_info(mc_token, uuid, name, world["id"])
+        world_info = cast(RealmWorldInfoResponse, mc.get_world_info(mc_token, uuid, name, world["id"]))
         online_players = sorted([player["name"] for player in world_info["players"] if player["online"]])
         print(online_players)
 
         await update_status(online_players)
 
         print("\n=== backup ===")
-        last_backup = mc.get_world_last_backup(mc_token, uuid, name, world["id"], 1)
+        last_backup = cast(RealmBackupResponse, mc.get_world_last_backup(mc_token, uuid, name, world["id"], 1))
         set_setting(LAST_BACKUP_URL, last_backup["downloadLink"])
 
 

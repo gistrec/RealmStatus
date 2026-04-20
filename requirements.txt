@@ -3,3 +3,5 @@ sqlalchemy
 mysqlclient
 python-telegram-bot
 asyncio
+mypy
+pyright

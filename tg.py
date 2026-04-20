@@ -2,7 +2,7 @@ import json
 import os
 
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, TypedDict
+from typing import Dict, List, TypedDict, cast
 
 from telegram import Bot
 from telegram.error import BadRequest
@@ -28,6 +28,12 @@ class PlayerSession(TypedDict):
     last_seen: int
 
 
+def _as_object_dict(value: object) -> dict[object, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(dict[object, object], value)
+
+
 def _load_player_sessions() -> Dict[str, PlayerSession]:
     raw = get_setting(PLAYER_SESSIONS_KEY)
     if not raw:
@@ -36,18 +42,20 @@ def _load_player_sessions() -> Dict[str, PlayerSession]:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    if not isinstance(data, dict):
+    data_dict = _as_object_dict(data)
+    if data_dict is None:
         return {}
     sessions: Dict[str, PlayerSession] = {}
-    for name, session in data.items():
+    for name, session in data_dict.items():
         if not isinstance(name, str):
             continue
         if isinstance(session, int):
             sessions[name] = {"started_at": session, "last_seen": session}
             continue
-        if isinstance(session, dict):
-            started_at = session.get("started_at")
-            last_seen = session.get("last_seen")
+        session_dict = _as_object_dict(session)
+        if session_dict is not None:
+            started_at = session_dict.get("started_at")
+            last_seen = session_dict.get("last_seen")
             if isinstance(started_at, int) and isinstance(last_seen, int):
                 sessions[name] = {"started_at": started_at, "last_seen": last_seen}
     return sessions
@@ -69,9 +77,27 @@ def _load_playtime_log() -> Dict[str, List[List[int]]]:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    if not isinstance(data, dict):
+    data_dict = _as_object_dict(data)
+    if data_dict is None:
         return {}
-    return data
+    parsed: Dict[str, List[List[int]]] = {}
+    for player, entries in data_dict.items():
+        if not isinstance(player, str) or not isinstance(entries, list):
+            continue
+        typed_entries: List[List[int]] = []
+        for entry in cast(list[object], entries):
+            if not isinstance(entry, list):
+                continue
+            entry_list = cast(list[object], entry)
+            if (
+                len(entry_list) == 2
+                and isinstance(entry_list[0], int)
+                and isinstance(entry_list[1], int)
+            ):
+                typed_entries.append([entry_list[0], entry_list[1]])
+        if typed_entries:
+            parsed[player] = typed_entries
+    return parsed
 
 
 def _save_playtime_log(log: Dict[str, List[List[int]]], now_ts: int) -> None:
@@ -164,6 +190,11 @@ def _format_message(players: List[str], sessions: Dict[str, PlayerSession], play
 
 
 async def update_status(players: List[str]) -> None:
+    if not BOT_TOKEN:
+        raise RuntimeError("Missing TELEGRAM_BOT_TOKEN env variable")
+    if not CHAT_ID:
+        raise RuntimeError("Missing TELEGRAM_CHAT_ID env variable")
+
     bot = Bot(token=BOT_TOKEN)
     now_utc = datetime.now(timezone.utc)
     now_ts = int(now_utc.timestamp())

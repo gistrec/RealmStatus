@@ -2,8 +2,8 @@ import os
 
 from typing import Optional
 
-from sqlalchemy import create_engine, Column, String
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
 MYSQL_USER     = os.getenv("MYSQL_USER")
@@ -23,14 +23,15 @@ engine = create_engine(f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYS
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class Setting(Base):
     __tablename__ = 'settings'
 
-    key   = Column(String(64), primary_key=True, nullable=False)
-    value = Column(String, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), primary_key=True, nullable=False)
+    value: Mapped[str] = mapped_column(String, nullable=False)
 
 
 def set_setting(key: str, value: str) -> None:
