@@ -1,7 +1,7 @@
 import asyncio
 from typing import TypedDict, cast
 
-from requests import HTTPError
+from requests import HTTPError, RequestException
 
 from auth.microsoft import MicrosoftAuth
 from auth.xbox import XboxAuth
@@ -9,6 +9,7 @@ from auth.minecraft import MinecraftAuth
 
 from tg import update_status
 from db import set_setting
+from stardew_valley import StardewValleyService
 
 
 LAST_BACKUP_URL = "last_backup_url"
@@ -38,6 +39,15 @@ class RealmWorldInfoResponse(TypedDict):
 
 class RealmBackupResponse(TypedDict):
     downloadLink: str
+
+
+def _load_stardew_online_players() -> list[str]:
+    try:
+        service = StardewValleyService()
+        return sorted(service.get_online_player_names())
+    except (RuntimeError, RequestException) as error:
+        print(f"Failed to load Stardew Valley status: {error}")
+        return []
 
 
 def _is_auth_error(error: HTTPError) -> bool:
@@ -91,6 +101,7 @@ async def main() -> None:
 
     print(f"Logged in as: {name}")
 
+    minecraft_online_players: list[str] = []
     worlds = cast(RealmWorldsResponse, mc.get_worlds(mc_token, uuid, name))
     for world in worlds["servers"]:
         if world["id"] != 12829680:
@@ -98,14 +109,15 @@ async def main() -> None:
 
         print("=== world info ===")
         world_info = cast(RealmWorldInfoResponse, mc.get_world_info(mc_token, uuid, name, world["id"]))
-        online_players = sorted([player["name"] for player in world_info["players"] if player["online"]])
-        print(online_players)
-
-        await update_status(online_players)
+        minecraft_online_players = sorted([player["name"] for player in world_info["players"] if player["online"]])
+        print(minecraft_online_players)
 
         print("\n=== backup ===")
         last_backup = cast(RealmBackupResponse, mc.get_world_last_backup(mc_token, uuid, name, world["id"], 1))
         set_setting(LAST_BACKUP_URL, last_backup["downloadLink"])
+
+    stardew_online_players = _load_stardew_online_players()
+    await update_status(minecraft_online_players, stardew_online_players)
 
 
 if __name__ == "__main__":

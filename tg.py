@@ -22,6 +22,8 @@ SESSION_GRACE_PERIOD = timedelta(minutes=10)
 WEEK_SECONDS = 7 * 24 * 3600
 
 MSK = timezone(timedelta(hours=3))
+MINECRAFT_SOURCE = "minecraft"
+STARDEW_SOURCE = "stardew"
 
 class PlayerSession(TypedDict):
     started_at: int
@@ -120,6 +122,34 @@ def _record_session(log: Dict[str, List[List[int]]], player: str, start_ts: int,
     log.setdefault(player, []).append([start_ts, duration])
 
 
+def _player_key(source: str, player_name: str) -> str:
+    return f"{source}:{player_name}"
+
+
+def _player_name_from_key(player_key: str) -> str:
+    return player_key.split(":", 1)[1] if ":" in player_key else player_key
+
+
+def _player_game_label(player_key: str) -> str:
+    if player_key.startswith(f"{MINECRAFT_SOURCE}:"):
+        return "Minecraft"
+    if player_key.startswith(f"{STARDEW_SOURCE}:"):
+        return "Stardew Valley"
+    return "Unknown"
+
+
+def _format_live_section(title: str, player_keys: List[str], sessions: Dict[str, PlayerSession], now_utc: datetime) -> str:
+    if not player_keys:
+        return f"{title}: 0\n— никого нет —"
+
+    lines = "\n".join(
+        f"• {_player_name_from_key(player_key)} "
+        f"{_format_duration(datetime.fromtimestamp(sessions[player_key]['started_at'], timezone.utc), now_utc)}"
+        for player_key in player_keys
+    )
+    return f"{title}: {len(player_keys)}\n{lines}"
+
+
 def _format_playtime(total_seconds: int) -> str:
     total_minutes = total_seconds // 60
     hours = total_minutes // 60
@@ -145,19 +175,21 @@ def _format_duration(started_at: datetime, now: datetime) -> str:
     return f"(Играет {hours}ч {minutes} мин)"
 
 
-def _format_message(players: List[str], sessions: Dict[str, PlayerSession], playtime_log: Dict[str, List[List[int]]], now_ts: int) -> str:
+def _format_message(
+    minecraft_players: List[str],
+    stardew_players: List[str],
+    sessions: Dict[str, PlayerSession],
+    playtime_log: Dict[str, List[List[int]]],
+    now_ts: int,
+) -> str:
     now_msk = datetime.now(MSK).strftime("%H:%M")
     now_utc = datetime.fromtimestamp(now_ts, timezone.utc)
-
-    if players:
-        players_block = "\n".join(
-            f"• {name} {_format_duration(datetime.fromtimestamp(sessions[name]['started_at'], timezone.utc), now_utc)}"
-            for name in players
-        )
-        online = len(players)
-    else:
-        players_block = "— никого нет —"
-        online = 0
+    minecraft_keys = [_player_key(MINECRAFT_SOURCE, name) for name in minecraft_players]
+    stardew_keys = [_player_key(STARDEW_SOURCE, name) for name in stardew_players]
+    all_online_keys = minecraft_keys + stardew_keys
+    online = len(all_online_keys)
+    minecraft_section = _format_live_section("🎮 *Minecraft*", minecraft_keys, sessions, now_utc)
+    stardew_section = _format_live_section("🌾 *Stardew Valley*", stardew_keys, sessions, now_utc)
 
     # Weekly stats: all players with playtime in the last 7 days
     cutoff = now_ts - WEEK_SECONDS
@@ -166,13 +198,13 @@ def _format_message(players: List[str], sessions: Dict[str, PlayerSession], play
         total = sum(d for s, d in entries if s >= cutoff)
         if total > 0:
             weekly[player] = total
-    for name, session in sessions.items():
-        weekly[name] = weekly.get(name, 0) + max(now_ts - session["started_at"], 0)
+    for player_key, session in sessions.items():
+        weekly[player_key] = weekly.get(player_key, 0) + max(now_ts - session["started_at"], 0)
 
     if weekly:
         weekly_lines = "\n".join(
-            f"• {name}: {_format_playtime(secs)}"
-            for name, secs in sorted(weekly.items(), key=lambda x: -x[1])
+            f"• {_player_name_from_key(player_key)} ({_player_game_label(player_key)}): {_format_playtime(secs)}"
+            for player_key, secs in sorted(weekly.items(), key=lambda x: -x[1])
         )
         weekly_section = f"\n📊 *За неделю:*\n{weekly_lines}\n"
     else:
@@ -181,15 +213,16 @@ def _format_message(players: List[str], sessions: Dict[str, PlayerSession], play
     return (
         f"👥 *Онлайн:* {online}\n"
         f"\n"
-        f"🟢 *Игроки:*\n"
-        f"{players_block}\n"
+        f"{minecraft_section}\n"
+        f"\n"
+        f"{stardew_section}\n"
         f"{weekly_section}"
         f"\n"
         f"🕒 _Обновлено: {now_msk} (МСК)_"
     )
 
 
-async def update_status(players: List[str]) -> None:
+async def update_status(minecraft_players: List[str], stardew_players: List[str]) -> None:
     if not BOT_TOKEN:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN env variable")
     if not CHAT_ID:
@@ -202,12 +235,17 @@ async def update_status(players: List[str]) -> None:
     sessions = _load_player_sessions()
     playtime_log = _load_playtime_log()
 
+    current_players = (
+        [_player_key(MINECRAFT_SOURCE, name) for name in minecraft_players]
+        + [_player_key(STARDEW_SOURCE, name) for name in stardew_players]
+    )
+
     # Update last_seen for current players, create new sessions for newcomers
-    for name in players:
-        if name in sessions:
-            sessions[name]["last_seen"] = now_ts
+    for player_key in current_players:
+        if player_key in sessions:
+            sessions[player_key]["last_seen"] = now_ts
         else:
-            sessions[name] = {"started_at": now_ts, "last_seen": now_ts}
+            sessions[player_key] = {"started_at": now_ts, "last_seen": now_ts}
 
     # Record completed sessions for players whose grace period has expired
     grace_cutoff = int((now_utc - SESSION_GRACE_PERIOD).timestamp())
@@ -224,7 +262,7 @@ async def update_status(players: List[str]) -> None:
 
     _save_player_sessions(sessions)
     _save_playtime_log(playtime_log, now_ts)
-    text = _format_message(players, sessions, playtime_log, now_ts)
+    text = _format_message(minecraft_players, stardew_players, sessions, playtime_log, now_ts)
 
     message_id = get_setting(MESSAGE_ID_KEY)
 
