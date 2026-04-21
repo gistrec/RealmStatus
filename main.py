@@ -120,5 +120,12 @@ async def main() -> None:
     await update_status(minecraft_online_players, stardew_online_players)
 
 
-if __name__ == "__main__":
+def handler(event, context):
     asyncio.run(main())
+    return {
+        'statusCode': 200
+    }
+
+
+if __name__ == "__main__":
+    handler(None, None)
