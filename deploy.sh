@@ -107,13 +107,19 @@ main() {
     )
     log "Archive: $ZIP_PATH ($(du -sh "$ZIP_PATH" | cut -f1))"
 
-    # Ensure exist
-    create_function_if_missing "$FUNCTION_NAME" >/dev/null
+    # ─── Cloud deploy is now owned by Terraform ───────────────────────────────
+    # infra repo → terraform/yandex/functions.tf: Terraform builds the zip and
+    # publishes the function version. The publish steps below are DISABLED — do
+    # not re-enable, running them creates a version outside Terraform state and
+    # causes drift. Deploy with `terraform apply` from the infra repo instead.
+    #
+    # # Ensure exist
+    # create_function_if_missing "$FUNCTION_NAME" >/dev/null
+    #
+    # # Deploy function
+    # deploy_version "$FUNCTION_NAME" "main.handler" "$FUNCTION_TIMEOUT"
 
-    # Deploy function
-    deploy_version "$FUNCTION_NAME" "main.handler" "$FUNCTION_TIMEOUT"
-
-    log "All done."
+    log "Packaged only — deploy is handled by Terraform (infra/terraform/yandex)."
 }
 
 main "$@"
