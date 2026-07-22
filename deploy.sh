@@ -107,13 +107,8 @@ main() {
     )
     log "Archive: $ZIP_PATH ($(du -sh "$ZIP_PATH" | cut -f1))"
 
-    # Ensure exist
-    create_function_if_missing "$FUNCTION_NAME" >/dev/null
-
-    # Deploy function
-    deploy_version "$FUNCTION_NAME" "main.handler" "$FUNCTION_TIMEOUT"
-
-    log "All done."
+    # Function deploy is owned by Terraform (infra: terraform/yandex/functions.tf).
+    log "Packaged only — deploy via terraform apply (infra repo)."
 }
 
 main "$@"
