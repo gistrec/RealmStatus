@@ -14,7 +14,7 @@ SERVICE_ACCOUNT_ID="ajee4eliqejv4c2fem3c"  # gistrec
 
 # ─── Environment variables ────────────────────────────────────────────────────
 ENV_ARGS=(
-    --environment MYSQL_HOST=projects.mysql.gistrec.cloud
+    --environment MYSQL_HOST=ru.mysql.gistrec.cloud
     --environment MYSQL_PORT=3306
     --environment MYSQL_USER=realmctl
     --environment MYSQL_DB=realmctl
@@ -101,6 +101,7 @@ main() {
             --exclude "__pycache__/*" \
             --exclude "*.pyc" \
             --exclude "*.pyo" \
+            --exclude "*.crt" \
             --exclude "deploy.sh" \
             --exclude "README.md" \
             --exclude "pyvenv.cfg"

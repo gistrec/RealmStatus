@@ -2,6 +2,7 @@ import os
 
 from typing import Optional
 
+import certifi
 from sqlalchemy import String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -12,19 +13,26 @@ MYSQL_HOST     = os.getenv("MYSQL_HOST")
 MYSQL_PORT     = os.getenv("MYSQL_PORT")
 MYSQL_DB       = os.getenv("MYSQL_DB")
 
-MYSQL_CHECK_SSL = os.getenv("MYSQL_CHECK_SSL") == "1"
+# TLS включён по умолчанию; MYSQL_CHECK_SSL=0 отключает его (локальная база без TLS).
+MYSQL_CHECK_SSL = os.getenv("MYSQL_CHECK_SSL", "1") != "0"
 
+# Секунды. Без таймаута зависшее соединение съедает весь лимит выполнения функции.
+MYSQL_CONNECT_TIMEOUT = 5
+
+
+connect_args: dict[str, object] = {"connect_timeout": MYSQL_CONNECT_TIMEOUT}
 
 if MYSQL_CHECK_SSL:
-    # Как можно скачать сертификат для подключения к MySQL
-    # mkdir ~/.mysql
-    # curl -o ~/.mysql/root.crt https://storage.yandexcloud.net/cloud-certs/CA.pem
-    ssl_ca_path = os.path.expanduser("~/.mysql/root.crt")
-    assert os.path.isfile(ssl_ca_path), "Не найден сертификат для подключения к MySQL"
+    # Сервер доступен через публичный адрес, поэтому TLS обязателен, а сертификат
+    # и имя хоста проверяются по публичным CA (у хоста сертификат Let's Encrypt).
+    connect_args["ssl_mode"] = "VERIFY_IDENTITY"
+    connect_args["ssl"] = {"ca": certifi.where()}
 
-    engine = create_engine(f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}?ssl_ca={ssl_ca_path}", pool_pre_ping=True)
-else:
-    engine = create_engine(f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}", pool_pre_ping=True)
+engine = create_engine(
+    f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}",
+    pool_pre_ping=True,
+    connect_args=connect_args,
+)
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
