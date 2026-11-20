@@ -47,12 +47,25 @@ class Game:
 
 
 @dataclass(frozen=True)
+class StatusBlock:
+    text: str
+    divider: str = ""
+
+
+@dataclass(frozen=True)
 class StatusSection:
     title: str
-    blocks: tuple[str, ...] = ()
+    blocks: tuple[StatusBlock, ...] = ()
 
     def __str__(self) -> str:
-        return "\n\n".join((self.title, *self.blocks))
+        parts = [self.title]
+        current_divider = ""
+        for block in self.blocks:
+            if block.divider != current_divider:
+                parts.extend(("\n\n", block.divider))
+                current_divider = block.divider
+            parts.extend(("\n\n", block.text))
+        return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -114,19 +127,30 @@ class StatusBoard:
         for game, result in zip(self.games, results):
             history_key = game.history_key or game.title
             records = self.roster.update(history_key, result, timestamp, self.poll_interval)
-            if not self.show_offline_players:
-                records = [entry for entry in records if entry[1]]
-            icon = _icon(icons, game.emoji_key, game.icon)
-            if result.note:
-                server_status = result.note
-            elif result.count is None:
-                server_status = "статус недоступен"
+            observed = sum(online for _, online in records)
+            total_players = len(records)
+            complete = result.count is not None and observed >= result.count
+            online_label = ""
+            if result.count:
+                online_label = f"онлайн {result.count}"
+                if complete:
+                    online_label += f"/{total_players}"
+            if complete:
+                inactive_label = f"оффлайн {total_players - observed}/{total_players}"
             else:
-                players = _plural(result.count, ("игрок", "игрока", "игроков"))
-                server_status = f"онлайн {result.count} {players}"
-            heading = _game_heading(game, icon, server_status, center=self.center_server_headers)
-            blocks = []
+                inactive_label = "статус неизвестен"
+
+            icon = _icon(icons, game.emoji_key, game.icon)
+            server_status = result.note or ("статус недоступен" if result.count is None else "")
+            heading = _game_heading(
+                game, icon, server_status, online_label, center=self.center_server_headers
+            )
+            online_blocks = []
+            inactive_blocks = []
+            inactive_divider = _divider(inactive_label)
             for player, online in records:
+                if not online and not self.show_offline_players:
+                    continue
                 head = heads.get((game.emoji_key, player.name.casefold())) if heads else None
                 name = " ".join(player.name.split())[:48]
                 nick_limit = STATUS_LINE_LIMIT - (2 if head is not None else 0)
@@ -143,11 +167,15 @@ class StatusBoard:
                 else:
                     activity = "время последней игры неизвестно"
                 activity_lines = "\n".join(wrap(activity, STATUS_LINE_LIMIT))
-                blocks.append(f"{nick}\n{activity_lines}")
-            if result.count is not None and result.count > len(result.names):
-                missing = f"— онлайн без ников: {result.count - len(result.names)} —"
-                blocks.append("\n".join(wrap(missing, STATUS_LINE_LIMIT)))
-            sections.append(StatusSection(heading, tuple(blocks)))
+                block = f"{nick}\n{activity_lines}"
+                if online:
+                    online_blocks.append(StatusBlock(block))
+                else:
+                    inactive_blocks.append(StatusBlock(block, inactive_divider))
+            if result.count is not None and result.count > observed:
+                missing = f"— онлайн без ников: {result.count - observed} —"
+                online_blocks.append(StatusBlock("\n".join(wrap(missing, STATUS_LINE_LIMIT))))
+            sections.append(StatusSection(heading, (*online_blocks, *inactive_blocks)))
 
         self.roster.save()
         updated = now.strftime("%H:%M")
@@ -162,7 +190,9 @@ def _heading_font(bold: bool = False) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(STATUS_FONTS / filename, HEADING_FONT_SIZE)
 
 
-def _game_heading(game: Game, icon: str, status: str, *, center: bool = False) -> str:
+def _game_heading(
+    game: Game, icon: str, status: str, online_label: str, *, center: bool = False
+) -> str:
     font = _heading_font()
     title = " ".join(game.title.split())[:128]
     icon_length = 1 if icon.startswith("<tg-emoji ") else len(game.icon)
@@ -194,11 +224,11 @@ def _game_heading(game: Game, icon: str, status: str, *, center: bool = False) -
     frame_width = STATUS_LINE_LIMIT * line_unit
     side_limit = (STATUS_LINE_LIMIT - len(first_title) - icon_length - 3) // 2
     side_length = max(0, min(side_limit, round((frame_width - title_width) / (2 * line_unit))))
-    heading = f"{icon} <b>{escape(first_title)}</b>"
+    heading = f"{icon} {escape(first_title)}"
     if side_length:
         sides = "_" * side_length
         heading = f"{sides} {heading} {sides}"
-    lines = [heading]
+    lines = [f"<b>{heading}</b>"]
     for index, (plain, markup, width) in enumerate(info):
         if not center and index >= len(rest):
             lines.append(markup)
@@ -209,8 +239,17 @@ def _game_heading(game: Game, icon: str, status: str, *, center: bool = False) -
         narrow = min(room - spaces, round((offset - spaces * gap) / narrow_gap))
         indent = NONBREAKING_SPACE * spaces + NARROW_NONBREAKING_SPACE * narrow
         lines.append(f"{indent}{markup}")
-    lines.append("_" * STATUS_LINE_LIMIT)
+    if online_label:
+        lines.extend(("", _divider(online_label)))
     return "\n".join(lines)
+
+
+def _divider(label: str) -> str:
+    sides = "_" * max(0, (STATUS_LINE_LIMIT - len(label) - 2) // 2)
+    label = escape(label)
+    if sides:
+        label = f"{sides} {label} {sides}"
+    return f"<b>{label}</b>"
 
 
 def _icon(icons: Mapping[str, tuple[int, str]] | None, key: str, fallback: str) -> str:
