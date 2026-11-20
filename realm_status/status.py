@@ -192,21 +192,15 @@ def _game_heading(game: Game, icon: str, status: str, *, center: bool = False) -
     # Telegram renders the game icon as an inline emoji before the bold title.
     title_width = _heading_font(True).getlength(first_title) + 3 * gap + HEADING_FONT_SIZE * 1.5
     frame_width = STATUS_LINE_LIMIT * line_unit
+    side_limit = (STATUS_LINE_LIMIT - len(first_title) - icon_length - 3) // 2
+    side_length = max(0, min(side_limit, round((frame_width - title_width) / (2 * line_unit))))
     heading = f"{icon} <b>{escape(first_title)}</b>"
-    if center:
-        side_limit = (STATUS_LINE_LIMIT - len(first_title) - icon_length - 3) // 2
-        side_length = max(0, min(side_limit, round((frame_width - title_width) / (2 * line_unit))))
-        if side_length:
-            sides = "_" * side_length
-            heading = f"{sides} {heading} {sides}"
-    else:
-        tail_limit = STATUS_LINE_LIMIT - len(first_title) - icon_length - 2
-        tail_length = max(0, min(tail_limit, round((frame_width - title_width + gap) / line_unit)))
-        if tail_length:
-            heading = f"{heading} {'_' * tail_length}"
+    if side_length:
+        sides = "_" * side_length
+        heading = f"{sides} {heading} {sides}"
     lines = [heading]
-    for plain, markup, width in info:
-        if not center:
+    for index, (plain, markup, width) in enumerate(info):
+        if not center and index >= len(rest):
             lines.append(markup)
             continue
         offset = max(0, (frame_width - width) / 2)
