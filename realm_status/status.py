@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
@@ -27,6 +28,7 @@ class Game:
     title: str
     icon: str
     source: StatusSource
+    emoji_key: str = ""
 
 
 class StatusBoard:
@@ -40,7 +42,7 @@ class StatusBoard:
             logger.warning("%s status failed (%s)", game.title, type(error).__name__)
             return Online(None, note="статус недоступен")
 
-    async def render(self) -> str:
+    async def render(self, icons: Mapping[str, tuple[int, str]] | None = None) -> str:
         results = await asyncio.gather(*(self._read(game) for game in self.games))
         known = [result.count for result in results if result.count is not None]
         total = str(sum(known)) if known or not results else "—"
@@ -52,7 +54,12 @@ class StatusBoard:
             sections.append("— все игры отключены —")
         for game, result in zip(self.games, results):
             count = "—" if result.count is None else str(result.count)
-            lines = [f"{escape(game.icon)} <b>{escape(game.title)}:</b> {count}"]
+            icon = escape(game.icon)
+            custom = icons.get(game.emoji_key) if icons else None
+            if custom:
+                document_id, alt = custom
+                icon = f'<tg-emoji emoji-id="{document_id}">{escape(alt)}</tg-emoji>'
+            lines = [f"{icon} <b>{escape(game.title)}:</b> {count}"]
             if result.note:
                 lines.append(f"— {escape(result.note)} —")
             elif result.count == 0:

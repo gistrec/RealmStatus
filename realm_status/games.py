@@ -17,6 +17,12 @@ from .status import Game, StatusBoard, StatusSource
 
 GAME_ID = re.compile(r"[a-z][a-z0-9_]{0,25}")
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+SOURCE_EMOJI_KEYS = {
+    "minecraft_java": "minecraft",
+    "minecraft_realms": "minecraft",
+    "terraria_viewer": "terraria",
+    "stardew_api": "stardew",
+}
 
 
 @dataclass(frozen=True)
@@ -128,7 +134,9 @@ class GameCatalog:
         games = []
         controls = {}
         for profile in self.profiles:
-            games.append(Game(profile.title, profile.icon, profile.make_source()))
+            games.append(Game(
+                profile.title, profile.icon, profile.make_source(), SOURCE_EMOJI_KEYS[profile.source]
+            ))
             control = profile.make_control()
             if control is not None:
                 controls[profile.id] = control

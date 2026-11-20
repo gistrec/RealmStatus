@@ -99,6 +99,7 @@ main() {
             --exclude ".env" \
             --exclude ".env.*" \
             --exclude ".state/*" \
+            --exclude "assets/emoji/generated/*" \
             --exclude "*.session*" \
             --exclude "venv/*" \
             --exclude ".ruff_cache/*" \

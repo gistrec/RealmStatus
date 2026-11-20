@@ -214,5 +214,6 @@ __marimo__/
 # Local Telethon credentials and session
 .state/
 games.toml
+/assets/emoji/generated/
 *.session
 *.session-*

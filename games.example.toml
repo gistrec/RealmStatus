@@ -27,6 +27,24 @@ stop_target = "tunnel-down"
 # Необязательная цель для /tunnel_restart. Без неё выполняются stop_target и start_target по очереди.
 # restart_target = "tunnel-restart"
 
+[emoji_pack]
+# Публиковать и обновлять набор в Telegram. Для включения укажи owner_id.
+enabled = false
+# Числовой Telegram ID пользователя, которому будет принадлежать набор.
+owner_id = 0
+# Имя набора в ссылке. Telegram добавляет суффикс _by_<имя_бота>.
+prefix = "realmstatus"
+# Название набора, видимое в Telegram.
+title = "RealmStatus"
+# Интервал проверки новых голов игроков в секундах, минимум 60.
+refresh_seconds = 900
+# Папка с исходными иконками приложений. Пути считаются от файла TOML.
+source_directory = "assets/emoji/source"
+# Кэш скинов Minecraft из плагина SkinsRestorer.
+minecraft_skins = "../mc.stashkevich.com/plugins/SkinsRestorer/skins"
+# Папка tMapOnline с историей игроков и сохранёнными портретами.
+terraria_data = "~/Library/Application Support/tMapOnline"
+
 [games.minecraft]
 # При false бот скрывает игру, пропускает её опрос и отключает команды.
 enabled = true

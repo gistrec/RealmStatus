@@ -5,15 +5,18 @@ import logging
 import re
 
 from telethon import TelegramClient, errors, events, utils
+from telethon.extensions import html
+from telethon.tl.types import MessageEntityCustomEmoji
 
 from .control import ServerControl, TunnelControl
+from .emoji.pack import EmojiPack, EmojiPackError
 from .games import GAME_ID
 from .settings import TelegramSettings
 from .status import StatusBoard
 
 logger = logging.getLogger(__name__)
 COMMAND = re.compile(
-    rf"/(status|tunnel_restart|{GAME_ID.pattern}_(?:start|stop))"
+    rf"/(status|emoji_sync|tunnel_restart|{GAME_ID.pattern}_(?:start|stop))"
     r"(?:@([A-Za-z0-9_]+))?"
 )
 
@@ -26,12 +29,15 @@ class TelegramBot:
         board: StatusBoard,
         controls: dict[str, ServerControl],
         tunnel: TunnelControl | None = None,
+        emoji_pack: EmojiPack | None = None,
     ) -> None:
         self.client = client
         self.config = config
         self.board = board
         self.controls = controls
         self.tunnel = tunnel
+        self.emoji_pack = emoji_pack
+        self.custom_emoji_rejected = False
         self.refresh = asyncio.Event()
         self.target_peer = None
         self.username = ""
@@ -51,10 +57,9 @@ class TelegramBot:
             delay = self.config.interval
             try:
                 peer = await self._target()
-                message = await self.board.render()
-                await self.client.edit_message(
-                    peer, self.config.message_id, message, parse_mode="html"
-                )
+                icons = self.emoji_pack.icons if self.emoji_pack and not self.custom_emoji_rejected else None
+                message = await self.board.render(icons)
+                await self._edit_status(peer, message)
             except errors.MessageNotModifiedError:
                 pass
             except errors.FloodWaitError as error:
@@ -83,6 +88,25 @@ class TelegramBot:
             except TimeoutError:
                 pass
 
+    async def _edit_status(self, peer, message: str) -> None:
+        text, entities = html.parse(message)
+        try:
+            await self.client.edit_message(
+                peer, self.config.message_id, text, formatting_entities=entities,
+            )
+        except (
+            errors.DocumentInvalidError, errors.EmojiInvalidError,
+            errors.EntityBoundsInvalidError, errors.PremiumAccountRequiredError,
+        ):
+            plain = [entity for entity in entities if not isinstance(entity, MessageEntityCustomEmoji)]
+            if len(plain) == len(entities):
+                raise
+            self.custom_emoji_rejected = True
+            logger.warning("Telegram отклонил эмодзи набора в сообщении с онлайном.")
+            await self.client.edit_message(
+                peer, self.config.message_id, text, formatting_entities=plain,
+            )
+
     async def on_message(self, event: events.NewMessage.Event) -> None:
         if event.chat_id == self.config.chat_id and self.target_peer is None:
             peer = await event.get_input_chat()
@@ -105,6 +129,17 @@ class TelegramBot:
         if command == "status":
             self.refresh.set()
             await event.reply("Запросил обновление сообщения с онлайном.", parse_mode=None)
+            return
+        if command == "emoji_sync":
+            result = "Публикация набора эмодзи отключена в конфигурации."
+            if self.emoji_pack is not None:
+                try:
+                    result = await self.emoji_pack.sync(self.username)
+                except (EmojiPackError, OSError, ValueError) as error:
+                    logger.warning("Не удалось обновить набор эмодзи: %s", error)
+                    result = "Не удалось обновить набор эмодзи. Проверьте журнал бота."
+                self.refresh.set()
+            await event.reply(result, parse_mode=None, link_preview=False)
             return
 
         game, action = command.rsplit("_", 1)
@@ -129,10 +164,15 @@ class TelegramBot:
             raise ValueError("Telethon-сессия принадлежит другому аккаунту.")
         self.username = account.username.lower()
         self.client.add_event_handler(self.on_message, events.NewMessage(incoming=True))
-        publisher = asyncio.create_task(self._publish())
+        background = [asyncio.create_task(self._publish())]
+        if self.emoji_pack is not None:
+            background.append(asyncio.create_task(
+                self.emoji_pack.run_periodically(self.username, self.refresh)
+            ))
         try:
             await self.client.run_until_disconnected()
         finally:
-            publisher.cancel()
-            await asyncio.gather(publisher, return_exceptions=True)
+            for task in background:
+                task.cancel()
+            await asyncio.gather(*background, return_exceptions=True)
             await self.client.disconnect()
