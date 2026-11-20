@@ -37,7 +37,7 @@ prefix = "realmstatus"
 # Название набора, видимое в Telegram.
 title = "RealmStatus"
 # Интервал проверки новых голов игроков в секундах, минимум 60.
-refresh_seconds = 900
+refresh_seconds = 60
 # Папка с исходными иконками приложений. Пути считаются от файла TOML.
 source_directory = "assets/emoji/source"
 # Кэш скинов Minecraft из плагина SkinsRestorer.

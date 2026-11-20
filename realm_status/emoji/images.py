@@ -7,12 +7,14 @@ import re
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from urllib.parse import urlsplit
 from uuid import UUID
 
 import requests
 from PIL import Image
 
+from ..status import PLAYER_EMOJI
 from .settings import EmojiSettings
 
 logger = logging.getLogger(__name__)
@@ -21,7 +23,6 @@ GAME_ICONS = {
     "terraria.icns": ("terraria", "🌳"),
     "stardew.png": ("stardew", "🌾"),
 }
-ICON_EMOJI = {emoji: game for game, emoji in GAME_ICONS.values()}
 SKIN_PATH = re.compile(r"/texture/([a-f0-9]{32,64})")
 AVATAR_PATH = re.compile(r"/player-avatars/([a-zA-Z0-9_-]+\.png)")
 MAX_TEXTURE_BYTES = 1_000_000
@@ -32,6 +33,7 @@ class EmojiImage:
     path: Path
     alt: str
     keyword: str
+    game: str | None = None
 
 
 class EmojiImages:
@@ -49,13 +51,15 @@ class EmojiImages:
         images.extend(self._terraria_heads())
         return images
 
-    def _save(self, image: Image.Image, key: str, alt: str, keyword: str, *, pixel=False) -> EmojiImage:
+    def _save(
+        self, image: Image.Image, key: str, alt: str, keyword: str, *, game: str | None = None
+    ) -> EmojiImage:
         image = image.convert("RGBA")
         bounds = image.getbbox()
         if not bounds:
             raise ValueError("Изображение полностью прозрачное.")
         image = image.crop(bounds)
-        if pixel and max(image.size) <= 96:
+        if game is not None and max(image.size) <= 96:
             factor = 96 // max(image.size)
             image = image.resize(
                 (image.width * factor, image.height * factor), Image.Resampling.NEAREST
@@ -66,8 +70,14 @@ class EmojiImages:
         canvas.paste(image, ((100 - image.width) // 2, (100 - image.height) // 2))
         output = self.work_dir / "png" / f"{key}.png"
         output.parent.mkdir(parents=True, exist_ok=True)
-        canvas.save(output, optimize=True)
-        return EmojiImage(output, alt, keyword)
+        buffer = BytesIO()
+        canvas.save(buffer, format="PNG", optimize=True)
+        content = buffer.getvalue()
+        if not output.exists() or output.read_bytes() != content:
+            with NamedTemporaryFile(dir=output.parent, delete=False) as temporary:
+                temporary.write(content)
+            Path(temporary.name).replace(output)
+        return EmojiImage(output, alt, keyword, game)
 
     def _texture(self, value: str) -> bytes:
         decoded = json.loads(base64.b64decode(value, validate=True))
@@ -114,7 +124,9 @@ class EmojiImages:
                     # Legacy 64×32 skins can store an unused opaque hat region.
                     if texture.height == 64 * scale or hat.getchannel("A").getextrema()[0] < 255:
                         head.alpha_composite(hat)
-                images.append(self._save(head, f"minecraft-{player_id}", "👤", name, pixel=True))
+                images.append(self._save(
+                    head, f"minecraft-{player_id}", PLAYER_EMOJI, name, game="minecraft"
+                ))
             except (OSError, ValueError, KeyError, TypeError, requests.RequestException) as error:
                 logger.warning("Пропущен скин Minecraft %s (%s).", file.stem, type(error).__name__)
         return images
@@ -141,8 +153,8 @@ class EmojiImages:
             try:
                 with Image.open(self.settings.terraria_data / "player-avatars" / filename) as head:
                     images.append(self._save(
-                        head, f"terraria-{Path(filename).stem}", "👤",
-                        str(player.get("name") or "Terraria"), pixel=True,
+                        head, f"terraria-{Path(filename).stem}", PLAYER_EMOJI,
+                        str(player.get("name") or "Terraria"), game="terraria",
                     ))
             except (OSError, ValueError) as error:
                 logger.warning("Пропущен аватар Terraria %s (%s).", filename, type(error).__name__)

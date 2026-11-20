@@ -12,13 +12,14 @@ from .control import ServerControl, TunnelControl
 from .emoji.pack import EmojiPack, EmojiPackError
 from .games import GAME_ID
 from .settings import TelegramSettings
-from .status import StatusBoard
+from .status import PLAYER_EMOJI, StatusBoard
 
 logger = logging.getLogger(__name__)
 COMMAND = re.compile(
     rf"/(status|emoji_sync|tunnel_restart|{GAME_ID.pattern}_(?:start|stop))"
     r"(?:@([A-Za-z0-9_]+))?"
 )
+PLAYER_HEAD_TAG = re.compile(rf'<tg-emoji emoji-id="\d+">{PLAYER_EMOJI}</tg-emoji> ')
 
 
 class TelegramBot:
@@ -38,6 +39,7 @@ class TelegramBot:
         self.tunnel = tunnel
         self.emoji_pack = emoji_pack
         self.custom_emoji_rejected = False
+        self.emoji_snapshot = None
         self.refresh = asyncio.Event()
         self.target_peer = None
         self.username = ""
@@ -57,8 +59,16 @@ class TelegramBot:
             delay = self.config.interval
             try:
                 peer = await self._target()
-                icons = self.emoji_pack.icons if self.emoji_pack and not self.custom_emoji_rejected else None
-                message = await self.board.render(icons)
+                pack = self.emoji_pack
+                snapshot = (pack.icons, pack.heads) if pack else None
+                if snapshot != self.emoji_snapshot:
+                    self.custom_emoji_rejected = False
+                    self.emoji_snapshot = snapshot
+                if self.custom_emoji_rejected:
+                    pack = None
+                message = await self.board.render(
+                    pack.icons if pack else None, pack.heads if pack else None
+                )
                 await self._edit_status(peer, message)
             except errors.MessageNotModifiedError:
                 pass
@@ -98,11 +108,14 @@ class TelegramBot:
             errors.DocumentInvalidError, errors.EmojiInvalidError,
             errors.EntityBoundsInvalidError, errors.PremiumAccountRequiredError,
         ):
-            plain = [entity for entity in entities if not isinstance(entity, MessageEntityCustomEmoji)]
-            if len(plain) == len(entities):
+            if not any(isinstance(entity, MessageEntityCustomEmoji) for entity in entities):
                 raise
             self.custom_emoji_rejected = True
             logger.warning("Telegram отклонил эмодзи набора в сообщении с онлайном.")
+            text, plain = html.parse(PLAYER_HEAD_TAG.sub("", message))
+            plain = [
+                entity for entity in plain if not isinstance(entity, MessageEntityCustomEmoji)
+            ]
             await self.client.edit_message(
                 peer, self.config.message_id, text, formatting_entities=plain,
             )

@@ -39,7 +39,7 @@ class EmojiSettings:
         owner_id = option("owner_id", 0)
         prefix = option("prefix", "realmstatus")
         title = option("title", "RealmStatus")
-        refresh_seconds = option("refresh_seconds", 900)
+        refresh_seconds = option("refresh_seconds", 60)
         if owner_id < 0 or (enabled and not owner_id):
             raise ValueError("Для включения emoji_pack укажите положительный owner_id.")
         if not PACK_PREFIX.fullmatch(prefix) or not 1 <= len(title) <= 64:

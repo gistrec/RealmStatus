@@ -2,12 +2,16 @@
 
 import asyncio
 import json
+import logging
 import time
+from urllib.parse import urljoin
 from urllib.request import urlopen
 
 from mcstatus import JavaServer
 
 from ..status import Online
+
+logger = logging.getLogger(__name__)
 
 
 class MinecraftServer:
@@ -41,7 +45,32 @@ class TerrariaServer:
             and time.time() - checked_at < 30
         ):
             return Online(None, note="ожидаю телеметрию")
-        return Online(server["players_online"], tuple(sorted(server["player_names"])))
+        names = tuple(sorted(server["player_names"]))
+        started_at = self._session_starts(names) if names else {}
+        return Online(server["players_online"], names, started_at=started_at)
+
+    def _session_starts(self, names: tuple[str, ...]) -> dict[str, float]:
+        url = urljoin(self.url, "/api/section-data?section=players")
+        try:
+            with urlopen(url, timeout=4) as response:
+                detail = json.load(response)
+            online_ids = set(detail["online"]["ids"])
+            observed = {name.casefold() for name in names}
+            starts = {}
+            for player in detail["players"]:
+                name = player["name"].casefold()
+                if player["id"] not in online_ids or name not in observed:
+                    continue
+                sessions = player["sessions"]
+                active = sessions[-1] if sessions else None
+                if active and active.get("ended_at") is None:
+                    start = float(active["started_at"])
+                    if 0 < start <= time.time():
+                        starts[name] = start
+            return starts
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            logger.debug("Сессии Terraria недоступны (%s).", type(error).__name__)
+            return {}
 
     async def read(self) -> Online:
         try:

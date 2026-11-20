@@ -30,15 +30,17 @@ async def run(preview: bool) -> None:
         raise ValueError("TELEGRAM_API_ID должен быть положительным числом.")
     api_hash = required("TELEGRAM_API_HASH")
     token = required("TELEGRAM_BOT_TOKEN")
-    emoji_pack = None
-    if emoji_settings.enabled:
-        emoji_pack = EmojiPack(emoji_settings, PROJECT_DIR / "assets/emoji/generated", token)
     session_directory = PROJECT_DIR / ".state"
     session_directory.mkdir(mode=0o700, exist_ok=True)
     client = TelegramClient(
         str(session_directory / "telegram"), api_id, api_hash,
         flood_sleep_threshold=0,
     )
+    emoji_pack = None
+    if emoji_settings.enabled:
+        emoji_pack = EmojiPack(
+            emoji_settings, PROJECT_DIR / "assets/emoji/generated", token, client
+        )
     try:
         await TelegramBot(
             client, config, board, controls, tunnel=tunnel, emoji_pack=emoji_pack
