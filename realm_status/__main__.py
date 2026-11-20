@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+from collections.abc import Callable
 
 from telethon import TelegramClient, errors
 
@@ -11,11 +12,12 @@ from .emoji.images import EmojiImages
 from .emoji.pack import EmojiPack
 from .emoji.settings import EmojiSettings
 from .games import GameCatalog
+from .lifecycle import STATE, BotRuntime, bot_lock
 from .settings import PROJECT_DIR, LocalConfig, TelegramSettings, load_environment, required
 from .telegram import TelegramBot
 
 
-async def run(preview: bool) -> None:
+async def run(preview: bool, on_ready: Callable[[], None] | None = None) -> None:
     local_config = LocalConfig.load()
     config = TelegramSettings.load(local_config)
     emoji_settings = EmojiSettings.load(local_config)
@@ -44,7 +46,7 @@ async def run(preview: bool) -> None:
     try:
         await TelegramBot(
             client, config, board, controls, tunnel=tunnel, emoji_pack=emoji_pack
-        ).run(token)
+        ).run(token, on_ready=on_ready)
     finally:
         await client.disconnect()
 
@@ -84,10 +86,15 @@ def main() -> int:
             print(f"Подготовлено PNG для Telegram: {len(images)}.")
         elif args.realms_login is not None:
             login_to_realms(args.realms_login or None)
+        elif args.preview:
+            asyncio.run(run(preview=True))
         else:
-            asyncio.run(run(args.preview))
-    except (ValueError, OSError, errors.RPCError) as error:
-        logging.error("Ошибка запуска (%s). %s", type(error).__name__, error if isinstance(error, ValueError) else "")
+            with bot_lock(STATE):
+                runtime = BotRuntime()
+                asyncio.run(runtime.run(lambda: run(preview=False, on_ready=runtime.mark_ready)))
+    except (ValueError, RuntimeError, OSError, errors.RPCError) as error:
+        details = error if isinstance(error, (ValueError, RuntimeError)) else ""
+        logging.error("Ошибка запуска (%s). %s", type(error).__name__, details)
         return 1
     except KeyboardInterrupt:
         return 0

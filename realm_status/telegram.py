@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 
 from telethon import TelegramClient, errors, events, utils
 from telethon.extensions import html
@@ -169,7 +170,7 @@ class TelegramBot:
         self.refresh.set()
         await event.reply(result, parse_mode=None)
 
-    async def run(self, token: str) -> None:
+    async def run(self, token: str, *, on_ready: Callable[[], None] | None = None) -> None:
         await self.client.start(bot_token=token)
         account = await self.client.get_me()
         token_id = int(token.split(":", 1)[0])
@@ -183,6 +184,8 @@ class TelegramBot:
                 self.emoji_pack.run_periodically(self.username, self.refresh)
             ))
         try:
+            if on_ready is not None:
+                on_ready()
             await self.client.run_until_disconnected()
         finally:
             for task in background:
