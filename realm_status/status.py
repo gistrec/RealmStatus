@@ -135,7 +135,7 @@ class StatusBoard:
                 if head is not None:
                     nick = f'<tg-emoji emoji-id="{head}">{PLAYER_EMOJI}</tg-emoji> {nick}'
                 if online and player.started_at is not None:
-                    activity = f"играет {_duration(timestamp - player.started_at)}"
+                    activity = _playing(timestamp - player.started_at)
                 elif player.started_at is not None:
                     activity = "текущий статус неизвестен"
                 elif player.last_seen is not None:
@@ -220,11 +220,13 @@ def _icon(icons: Mapping[str, tuple[int, str]] | None, key: str, fallback: str) 
     return escape(fallback)
 
 
-def _duration(seconds: float) -> str:
+def _playing(seconds: float) -> str:
     hours, minutes = divmod(max(0, int(seconds)) // 60, 60)
     if hours:
-        return f"{hours} ч {minutes} мин"
-    return f"{minutes} мин"
+        return f"играет {hours} ч {minutes} мин"
+    if minutes:
+        return f"играет {minutes} мин"
+    return "играет прямо сейчас"
 
 
 def _last_played(seconds: float) -> str:
