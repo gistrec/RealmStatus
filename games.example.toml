@@ -1,0 +1,101 @@
+[telegram]
+# Числовой ID чата или канала, где находится сообщение с онлайном.
+chat_id = -1003410760885
+# ID сообщения внутри этого чата. В ссылке t.me/c/3410760885/38 это 38.
+message_id = 38
+# Публичное имя чата из ссылки t.me/<имя>. Для закрытого чата оставь пустым.
+chat_username = ""
+# Интервал обновления сообщения в секундах, минимум 30.
+update_interval_seconds = 60
+
+# Список ID чатов для команд. Пустой список [] отключает команды.
+control_chat_ids = [-1003410760885]
+# Числовые ID пользователей, которым доступны команды при allow_all_users = false.
+allowed_user_ids = []
+# При true команды доступны всем пользователям в control_chat_ids.
+allow_all_users = false
+
+[tunnel]
+# При false бот отключает все команды FRPC. Подходит для серверов на VPS.
+enabled = true
+# Папка проекта FRPC с Makefile. Путь считается от этого TOML.
+directory = "../makstashkevich.com"
+# Make-цель для /tunnel_start.
+start_target = "tunnel-up"
+# Make-цель для /tunnel_stop.
+stop_target = "tunnel-down"
+# Необязательная цель для /tunnel_restart. Без неё выполняются stop_target и start_target по очереди.
+# restart_target = "tunnel-restart"
+
+[games.minecraft]
+# При false бот скрывает игру, пропускает её опрос и отключает команды.
+enabled = true
+# Название игры в сообщении с онлайном.
+title = "Minecraft"
+# Эмодзи рядом с названием игры.
+icon = "🎮"
+# Источник онлайна Minecraft. Выбери "minecraft_java" для сервера или "minecraft_realms" для Realms.
+source = "minecraft_java"
+
+[games.minecraft.sources.minecraft_java]
+# IP или домен Minecraft Java, который бот опрашивает.
+host = "127.0.0.1"
+# TCP-порт Minecraft Java.
+port = 25565
+
+# Этот блок включает команды управления для локального источника.
+# Относительные пути считаются от папки с этим TOML.
+[games.minecraft.sources.minecraft_java.control]
+# Папка серверного проекта с Makefile.
+directory = "../mc.stashkevich.com"
+# Make-цель для запуска сервера.
+start_target = "start"
+# Make-цель для остановки сервера.
+stop_target = "stop"
+
+[games.minecraft.sources.minecraft_realms]
+# Числовой ID мира Minecraft Realms, у которого бот запрашивает онлайн.
+world_id = 12829680
+
+[games.terraria]
+# При false бот скрывает игру, пропускает её опрос и отключает команды.
+enabled = true
+# Название игры в сообщении с онлайном.
+title = "Terraria"
+# Эмодзи рядом с названием игры.
+icon = "🌳"
+# Источник онлайна Terraria. "terraria_viewer" получает данные из tMapOnline.
+source = "terraria_viewer"
+
+[games.terraria.sources.terraria_viewer]
+# IP или домен игрового сервера Terraria. На нём бот проверяет доступность TCP-порта.
+host = "127.0.0.1"
+# TCP-порт игрового сервера Terraria.
+port = 7777
+# Полный URL API tMapOnline, которое отдаёт число и имена игроков.
+url = "http://127.0.0.1:8765/api/sidebar-status"
+
+# Этот блок включает команды управления для локального источника.
+# Относительные пути считаются от папки с этим TOML.
+[games.terraria.sources.terraria_viewer.control]
+# Папка серверного проекта с Makefile.
+directory = "../terka.stashkevich.com"
+# Make-цель для запуска сервера.
+start_target = "start"
+# Make-цель для остановки сервера.
+stop_target = "stop"
+
+[games.stardew]
+# При false бот скрывает игру, пропускает её опрос и отключает команды.
+enabled = false
+# Название игры в сообщении с онлайном.
+title = "Stardew Valley"
+# Эмодзи рядом с названием игры.
+icon = "🌾"
+# Источник онлайна Stardew Valley. "stardew_api" опрашивает API сервера.
+source = "stardew_api"
+
+[games.stardew.sources.stardew_api]
+# Базовый URL API Stardew Valley, без /players. По умолчанию берётся из STARDEW_API_BASE_URL.
+# base_url = "http://127.0.0.1:8080"
+# Токен для этого API задаётся через STARDEW_API_TOKEN в .env.

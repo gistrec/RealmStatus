@@ -210,3 +210,9 @@ __marimo__/
 # Local build output and stray certificates
 .dist/
 *.crt
+
+# Local Telethon credentials and session
+.state/
+games.toml
+*.session
+*.session-*

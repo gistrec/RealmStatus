@@ -1,0 +1,138 @@
+"""Resolve the target peer, edit its status message and handle admin commands."""
+
+import asyncio
+import logging
+import re
+
+from telethon import TelegramClient, errors, events, utils
+
+from .control import ServerControl, TunnelControl
+from .games import GAME_ID
+from .settings import TelegramSettings
+from .status import StatusBoard
+
+logger = logging.getLogger(__name__)
+COMMAND = re.compile(
+    rf"/(status|tunnel_restart|{GAME_ID.pattern}_(?:start|stop))"
+    r"(?:@([A-Za-z0-9_]+))?"
+)
+
+
+class TelegramBot:
+    def __init__(
+        self,
+        client: TelegramClient,
+        config: TelegramSettings,
+        board: StatusBoard,
+        controls: dict[str, ServerControl],
+        tunnel: TunnelControl | None = None,
+    ) -> None:
+        self.client = client
+        self.config = config
+        self.board = board
+        self.controls = controls
+        self.tunnel = tunnel
+        self.refresh = asyncio.Event()
+        self.target_peer = None
+        self.username = ""
+
+    async def _target(self):
+        if self.target_peer is None:
+            reference = self.config.chat_username or self.config.chat_id
+            peer = await self.client.get_input_entity(reference)
+            if utils.get_peer_id(peer) != self.config.chat_id:
+                raise ValueError("telegram.chat_username points to a different chat")
+            self.target_peer = peer
+        return self.target_peer
+
+    async def _publish(self) -> None:
+        while True:
+            self.refresh.clear()
+            delay = self.config.interval
+            try:
+                peer = await self._target()
+                message = await self.board.render()
+                await self.client.edit_message(
+                    peer, self.config.message_id, message, parse_mode="html"
+                )
+            except errors.MessageNotModifiedError:
+                pass
+            except errors.FloodWaitError as error:
+                await asyncio.sleep(error.seconds + 1)
+            except (
+                errors.MessageAuthorRequiredError,
+                errors.MessageIdInvalidError,
+                errors.MessageEditTimeExpiredError,
+                errors.ChatAdminRequiredError,
+                errors.ChatWriteForbiddenError,
+            ) as error:
+                logger.error(
+                    "Cannot edit configured message %s in chat %s (%s)",
+                    self.config.message_id, self.config.chat_id, type(error).__name__,
+                )
+            except ValueError:
+                logger.warning(
+                    "Cannot resolve chat %s. Check its username or mention the bot in that chat.",
+                    self.config.chat_id,
+                )
+            except (OSError, errors.RPCError) as error:
+                logger.warning("Telegram update failed (%s)", type(error).__name__)
+
+            try:
+                await asyncio.wait_for(self.refresh.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+
+    async def on_message(self, event: events.NewMessage.Event) -> None:
+        if event.chat_id == self.config.chat_id and self.target_peer is None:
+            peer = await event.get_input_chat()
+            if peer is not None:
+                self.target_peer = peer
+                self.refresh.set()
+
+        if (
+            not self.config.allows_command(event.chat_id, event.sender_id)
+            or event.fwd_from is not None
+            or event.via_bot_id is not None
+        ):
+            return
+        match = COMMAND.fullmatch(event.raw_text.strip())
+        if match is None:
+            return
+        command, username = match.groups()
+        if username is not None and username.lower() != self.username:
+            return
+        if command == "status":
+            self.refresh.set()
+            await event.reply("Запросил обновление сообщения с онлайном.", parse_mode=None)
+            return
+
+        game, action = command.rsplit("_", 1)
+        control = self.tunnel if game == "tunnel" else self.controls.get(game)
+        if control is None:
+            message = (
+                "Управление туннелем отключено в конфигурации."
+                if game == "tunnel"
+                else "Управление этой игрой отключено в конфигурации."
+            )
+            await event.reply(message, parse_mode=None)
+            return
+        result = await control.run(action)
+        self.refresh.set()
+        await event.reply(result, parse_mode=None)
+
+    async def run(self, token: str) -> None:
+        await self.client.start(bot_token=token)
+        account = await self.client.get_me()
+        token_id = int(token.split(":", 1)[0])
+        if not account.bot or account.id != token_id:
+            raise ValueError("Telethon-сессия принадлежит другому аккаунту.")
+        self.username = account.username.lower()
+        self.client.add_event_handler(self.on_message, events.NewMessage(incoming=True))
+        publisher = asyncio.create_task(self._publish())
+        try:
+            await self.client.run_until_disconnected()
+        finally:
+            publisher.cancel()
+            await asyncio.gather(publisher, return_exceptions=True)
+            await self.client.disconnect()

@@ -96,6 +96,10 @@ main() {
             --exclude "*.git*" \
             --exclude ".dist/*" \
             --exclude ".venv/*" \
+            --exclude ".env" \
+            --exclude ".env.*" \
+            --exclude ".state/*" \
+            --exclude "*.session*" \
             --exclude "venv/*" \
             --exclude ".ruff_cache/*" \
             --exclude "__pycache__/*" \
