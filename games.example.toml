@@ -9,6 +9,8 @@ chat_username = ""
 update_interval_seconds = 60
 # true показывает всех известных игроков, false — только игроков онлайн.
 show_offline_players = true
+# true центрирует название и данные сервера. false выравнивает их по левому краю.
+center_server_headers = false
 
 # Список чатов для команд. При [] доступны только личные сообщения пользователей из allowed_user_ids.
 control_chat_ids = [-1003410760885]

@@ -72,11 +72,13 @@ class StatusBoard:
     def __init__(
         self, games: tuple[Game, ...], roster: PlayerRoster | None = None,
         *, poll_interval: int = 60, show_offline_players: bool = True,
+        center_server_headers: bool = False,
     ) -> None:
         self.games = games
         self.roster = roster if roster is not None else PlayerRoster()
         self.poll_interval = poll_interval
         self.show_offline_players = show_offline_players
+        self.center_server_headers = center_server_headers
 
     async def _read(self, game: Game) -> Online:
         try:
@@ -122,7 +124,7 @@ class StatusBoard:
             else:
                 players = _plural(result.count, ("игрок", "игрока", "игроков"))
                 server_status = f"онлайн {result.count} {players}"
-            heading = _game_heading(game, icon, server_status)
+            heading = _game_heading(game, icon, server_status, center=self.center_server_headers)
             blocks = []
             for player, online in records:
                 head = heads.get((game.emoji_key, player.name.casefold())) if heads else None
@@ -160,7 +162,7 @@ def _heading_font(bold: bool = False) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(STATUS_FONTS / filename, HEADING_FONT_SIZE)
 
 
-def _game_heading(game: Game, icon: str, status: str) -> str:
+def _game_heading(game: Game, icon: str, status: str, *, center: bool = False) -> str:
     font = _heading_font()
     title = " ".join(game.title.split())[:128]
     icon_length = 1 if icon.startswith("<tg-emoji ") else len(game.icon)
@@ -190,12 +192,23 @@ def _game_heading(game: Game, icon: str, status: str) -> str:
     # Telegram renders the game icon as an inline emoji before the bold title.
     title_width = _heading_font(True).getlength(first_title) + 3 * gap + HEADING_FONT_SIZE * 1.5
     frame_width = STATUS_LINE_LIMIT * line_unit
-    side_limit = (STATUS_LINE_LIMIT - len(first_title) - icon_length - 3) // 2
-    side_length = max(0, min(side_limit, round((frame_width - title_width) / (2 * line_unit))))
-    sides = "_" * side_length
     heading = f"{icon} <b>{escape(first_title)}</b>"
-    lines = [f"{sides} {heading} {sides}" if sides else heading]
+    if center:
+        side_limit = (STATUS_LINE_LIMIT - len(first_title) - icon_length - 3) // 2
+        side_length = max(0, min(side_limit, round((frame_width - title_width) / (2 * line_unit))))
+        if side_length:
+            sides = "_" * side_length
+            heading = f"{sides} {heading} {sides}"
+    else:
+        tail_limit = STATUS_LINE_LIMIT - len(first_title) - icon_length - 2
+        tail_length = max(0, min(tail_limit, round((frame_width - title_width + gap) / line_unit)))
+        if tail_length:
+            heading = f"{heading} {'_' * tail_length}"
+    lines = [heading]
     for plain, markup, width in info:
+        if not center:
+            lines.append(markup)
+            continue
         offset = max(0, (frame_width - width) / 2)
         room = STATUS_LINE_LIMIT - len(plain)
         spaces = min(room, int(offset / gap))

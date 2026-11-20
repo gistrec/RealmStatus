@@ -43,6 +43,7 @@ class TelegramSettings:
     interval: int
     chat_username: str | None
     show_offline_players: bool = True
+    center_server_headers: bool = False
 
     @classmethod
     def load(cls, config: LocalConfig) -> "TelegramSettings":
@@ -52,6 +53,9 @@ class TelegramSettings:
         show_offline_players = (table or {}).get("show_offline_players", True)
         if type(show_offline_players) is not bool:
             raise ValueError("telegram.show_offline_players: ожидается true или false.")
+        center_server_headers = (table or {}).get("center_server_headers", False)
+        if type(center_server_headers) is not bool:
+            raise ValueError("telegram.center_server_headers: ожидается true или false.")
         if config.using_template or table is None:
             chat_id = int(os.getenv("TELEGRAM_CHAT_ID", str(DEFAULT_CHAT_ID)))
             table = {
@@ -104,6 +108,7 @@ class TelegramSettings:
             interval=interval,
             chat_username=chat_username.strip() or None,
             show_offline_players=show_offline_players,
+            center_server_headers=center_server_headers,
         )
 
     def allows_command(

@@ -172,6 +172,7 @@ class GameCatalog:
     def build(
         self, roster: PlayerRoster | None = None, *, poll_interval: int = 60,
         show_offline_players: bool = True,
+        center_server_headers: bool = False,
     ) -> tuple[StatusBoard, dict[str, ServerControl]]:
         games = []
         controls = {}
@@ -184,7 +185,8 @@ class GameCatalog:
             if control is not None:
                 controls[profile.id] = control
         board = StatusBoard(
-            tuple(games), roster, poll_interval=poll_interval, show_offline_players=show_offline_players
+            tuple(games), roster, poll_interval=poll_interval, show_offline_players=show_offline_players,
+            center_server_headers=center_server_headers,
         )
         return board, controls
 

@@ -24,7 +24,8 @@ async def run(preview: bool, on_ready: Callable[[], None] | None = None) -> None
     emoji_settings = EmojiSettings.load(local_config)
     roster = PlayerRoster(STATE / "player-roster.json", writable=not preview)
     board, controls = GameCatalog.load(local_config).build(
-        roster, poll_interval=config.interval, show_offline_players=config.show_offline_players
+        roster, poll_interval=config.interval, show_offline_players=config.show_offline_players,
+        center_server_headers=config.center_server_headers,
     )
     tunnel = TunnelControl.load(local_config)
     if preview:
