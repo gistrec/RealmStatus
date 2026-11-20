@@ -28,6 +28,25 @@ class Game:
     history_key: str = ""
 
 
+@dataclass(frozen=True)
+class StatusSection:
+    title: str
+    blocks: tuple[str, ...] = ()
+
+    def __str__(self) -> str:
+        return f"{self.title}\n" + "\n\n".join(self.blocks) if self.blocks else self.title
+
+
+@dataclass(frozen=True)
+class StatusMessage:
+    header: str
+    sections: tuple[StatusSection, ...]
+    footer: str
+
+    def __str__(self) -> str:
+        return "\n\n".join((self.header, *map(str, self.sections), self.footer))
+
+
 class StatusBoard:
     def __init__(
         self, games: tuple[Game, ...], roster: PlayerRoster | None = None,
@@ -49,7 +68,7 @@ class StatusBoard:
         self,
         icons: Mapping[str, tuple[int, str]] | None = None,
         heads: Mapping[tuple[str, str], int] | None = None,
-    ) -> str:
+    ) -> StatusMessage:
         results = await asyncio.gather(*(self._read(game) for game in self.games))
         now = datetime.now(ZoneInfo("Europe/Moscow"))
         known = [result.count for result in results if result.count is not None]
@@ -64,9 +83,10 @@ class StatusBoard:
             online_icon = _icon(icons, "minecraft-heart-empty", "🤍")
         else:
             online_icon = "👥"
-        sections = [f"{online_icon} <b>Онлайн:</b> {total}"]
+        header = f"{online_icon} <b>Онлайн:</b> {total}"
+        sections = []
         if not self.games:
-            sections.append("— все игры отключены —")
+            sections.append(StatusSection("— все игры отключены —"))
         timestamp = now.timestamp()
         for game, result in zip(self.games, results):
             history_key = game.history_key or game.title
@@ -76,11 +96,12 @@ class StatusBoard:
             count = "—" if result.count is None else str(result.count)
             icon = _icon(icons, game.emoji_key, game.icon)
             title = escape(" ".join(game.title.split())[:128])
-            lines = [f"{icon} <b>{title}:</b> {count}"]
+            heading = f"{icon} <b>{title}:</b> {count}"
+            blocks = []
             if result.note:
-                lines.append(f"— {escape(result.note)} —")
+                blocks.append(f"— {escape(result.note)} —")
             elif not records and result.count == 0:
-                lines.append("— никого нет —")
+                blocks.append("— никого нет —")
             for player, online in records:
                 nick = escape(" ".join(player.name.split())[:48])
                 head = heads.get((game.emoji_key, player.name.casefold())) if heads else None
@@ -94,16 +115,16 @@ class StatusBoard:
                     activity = _last_played(timestamp - player.last_seen)
                 else:
                     activity = "время последней игры неизвестно"
-                lines.append(f"{nick}: {activity}")
+                blocks.append(f"{nick}\n{activity}")
             if result.count is not None and result.count > len(result.names):
-                lines.append(f"— онлайн без ников: {result.count - len(result.names)} —")
-            sections.append("\n".join(lines))
+                blocks.append(f"— онлайн без ников: {result.count - len(result.names)} —")
+            sections.append(StatusSection(heading, tuple(blocks)))
 
         self.roster.save()
         updated = now.strftime("%H:%M")
         clock = _icon(icons, "minecraft-clock", "🕒")
-        sections.append(f"{clock} <i>Обновлено: {updated} (МСК)</i>")
-        return "\n\n".join(sections)
+        footer = f"{clock} <i>Обновлено: {updated} (МСК)</i>"
+        return StatusMessage(header, tuple(sections), footer)
 
 
 def _icon(icons: Mapping[str, tuple[int, str]] | None, key: str, fallback: str) -> str:

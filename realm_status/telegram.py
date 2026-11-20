@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from telethon import Button, TelegramClient, errors, events, utils
 from telethon.extensions import html
-from telethon.tl.types import MessageEntityCustomEmoji, ReplyInlineMarkup
+from telethon.tl.types import MessageEntityCustomEmoji
 
 from .control import ServerControl, TunnelControl
 from .emoji.pack import EmojiPack, EmojiPackError
@@ -112,7 +112,7 @@ class TelegramBot:
             buttons.append(Button.inline("‹ Назад", f"roster:{self.page - 1}"))
         if self.page + 1 < len(self.pages):
             buttons.append(Button.inline("Далее ›", f"roster:{self.page + 1}"))
-        await self._edit_status(peer, self.pages[self.page], buttons or ReplyInlineMarkup([]))
+        await self._edit_status(peer, self.pages[self.page], buttons or None)
 
     async def on_roster_page(self, event: events.CallbackQuery.Event) -> None:
         if event.chat_id != self.config.chat_id or event.message_id != self.config.message_id:
