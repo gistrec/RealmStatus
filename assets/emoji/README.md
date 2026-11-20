@@ -5,6 +5,9 @@
 | Файл | Откуда скопирован |
 | --- | --- |
 | `minecraft.icns` | `icons/minecraft.icns` из индекса ресурсов установленной Minecraft Java Edition 26.3 |
+| `minecraft-heart-full.png` | `gui/sprites/hud/heart/full.png` из текстур Minecraft Java Edition 26.3 |
+| `minecraft-heart-empty.png` | `gui/sprites/hud/heart/container.png` из текстур Minecraft Java Edition 26.3 |
+| `minecraft-clock.png` | `item/clock_00.png` из текстур Minecraft Java Edition 26.3 |
 | `terraria.icns` | `Terraria.app/Contents/Resources/Terraria.icns` из Steam |
 | `stardew.png` | Предоставленный файл `Daco_4464954.png` |
 

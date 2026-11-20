@@ -18,10 +18,13 @@ from ..status import PLAYER_EMOJI
 from .settings import EmojiSettings
 
 logger = logging.getLogger(__name__)
-GAME_ICONS = {
-    "minecraft.icns": ("minecraft", "🎮"),
-    "terraria.icns": ("terraria", "🌳"),
-    "stardew.png": ("stardew", "🌾"),
+STATIC_ICONS = {
+    "minecraft.icns": ("minecraft", "🎮", False),
+    "terraria.icns": ("terraria", "🌳", False),
+    "stardew.png": ("stardew", "🌾", False),
+    "minecraft-heart-full.png": ("minecraft-heart-full", "❤️", True),
+    "minecraft-heart-empty.png": ("minecraft-heart-empty", "🤍", True),
+    "minecraft-clock.png": ("minecraft-clock", "🕒", True),
 }
 SKIN_PATH = re.compile(r"/texture/([a-f0-9]{32,64})")
 AVATAR_PATH = re.compile(r"/player-avatars/([a-zA-Z0-9_-]+\.png)")
@@ -43,23 +46,24 @@ class EmojiImages:
 
     def prepare(self) -> list[EmojiImage]:
         images = []
-        for filename, (game, alt) in GAME_ICONS.items():
+        for filename, (key, alt, pixel_art) in STATIC_ICONS.items():
             path = self.settings.source_dir / filename
             with Image.open(path) as icon:
-                images.append(self._save(icon, game, alt, game))
+                images.append(self._save(icon, key, alt, key, pixel_art=pixel_art))
         images.extend(self._minecraft_heads())
         images.extend(self._terraria_heads())
         return images
 
     def _save(
-        self, image: Image.Image, key: str, alt: str, keyword: str, *, game: str | None = None
+        self, image: Image.Image, key: str, alt: str, keyword: str,
+        *, game: str | None = None, pixel_art: bool = False,
     ) -> EmojiImage:
         image = image.convert("RGBA")
         bounds = image.getbbox()
         if not bounds:
             raise ValueError("Изображение полностью прозрачное.")
         image = image.crop(bounds)
-        if game is not None and max(image.size) <= 96:
+        if (pixel_art or game is not None) and max(image.size) <= 96:
             factor = 96 // max(image.size)
             image = image.resize(
                 (image.width * factor, image.height * factor), Image.Resampling.NEAREST
