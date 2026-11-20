@@ -10,9 +10,9 @@ update_interval_seconds = 60
 # true показывает всех известных игроков, false — только игроков онлайн.
 show_offline_players = true
 
-# Список ID чатов для команд. Пустой список [] отключает команды.
+# Список чатов для команд. При [] доступны только личные сообщения пользователей из allowed_user_ids.
 control_chat_ids = [-1003410760885]
-# Числовые ID пользователей, которым доступны команды при allow_all_users = false.
+# Числовые ID пользователей с доступом в личке. При allow_all_users = false список также ограничивает команды в control_chat_ids.
 allowed_user_ids = []
 # При true команды доступны всем пользователям в control_chat_ids.
 allow_all_users = false

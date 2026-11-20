@@ -106,13 +106,15 @@ class TelegramSettings:
             show_offline_players=show_offline_players,
         )
 
-    def allows_command(self, chat_id: int | None, user_id: int | None) -> bool:
-        return (
-            chat_id in self.control_chat_ids
-            and user_id is not None
-            and user_id > 0
-            and (self.allow_all_users or user_id in self.allowed_user_ids)
-        )
+    def allows_command(
+        self, chat_id: int | None, user_id: int | None, *, is_private: bool = False
+    ) -> bool:
+        if user_id is None or user_id <= 0:
+            return False
+        allowed_user = user_id in self.allowed_user_ids
+        if is_private and chat_id == user_id and allowed_user:
+            return True
+        return chat_id in self.control_chat_ids and (self.allow_all_users or allowed_user)
 
 
 def load_environment() -> None:

@@ -162,7 +162,7 @@ class TelegramBot:
                 self.refresh.set()
 
         if (
-            not self.config.allows_command(event.chat_id, event.sender_id)
+            not self.config.allows_command(event.chat_id, event.sender_id, is_private=event.is_private)
             or event.fwd_from is not None
             or event.via_bot_id is not None
         ):
