@@ -16,7 +16,7 @@ from .settings import LocalConfig
 from .sources.legacy import MinecraftRealms, StardewValley
 from .sources.local import MinecraftServer, TerrariaServer
 from .sources.minecraft_history import MinecraftHistory
-from .status import Game, StatusBoard, StatusSource
+from .status import Game, PublicAddress, StatusBoard, StatusSource
 
 GAME_ID = re.compile(r"[a-z][a-z0-9_]{0,25}")
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -47,11 +47,20 @@ class GameProfile:
             raise ValueError(f"{self.name}.{key}: ожидается {expected.__name__}.")
         return value
 
-    def port(self) -> int:
-        port = self.value("port", int)
+    def port(self, key: str = "port") -> int:
+        port = self.value(key, int)
         if not 1 <= port <= 65535:
-            raise ValueError(f"{self.name}.port: ожидается порт от 1 до 65535.")
+            raise ValueError(f"{self.name}.{key}: ожидается порт от 1 до 65535.")
         return port
+
+    def public_address(self) -> PublicAddress | None:
+        if not any(key in self.options for key in ("public_host", "public_port", "public_bedrock_port")):
+            return None
+        host = self.value("public_host", str).strip()
+        if re.search(r"[\s/|]", host):
+            raise ValueError(f"{self.name}.public_host: укажите IP или домен.")
+        bedrock_port = self.port("public_bedrock_port") if "public_bedrock_port" in self.options else None
+        return PublicAddress(host, self.port("public_port"), bedrock_port)
 
     def realm_id(self) -> int:
         world_id = self.value("world_id", int)
@@ -169,7 +178,7 @@ class GameCatalog:
         for profile in self.profiles:
             games.append(Game(
                 profile.title, profile.icon, profile.make_source(),
-                SOURCE_EMOJI_KEYS[profile.source], profile.history_key(),
+                SOURCE_EMOJI_KEYS[profile.source], profile.history_key(), profile.public_address(),
             ))
             control = profile.make_control()
             if control is not None:

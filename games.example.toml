@@ -62,6 +62,11 @@ source = "minecraft_java"
 host = "127.0.0.1"
 # TCP-порт Minecraft Java.
 port = 25565
+# Публичный адрес и порт для игроков. Бот выводит их в сообщении.
+public_host = "mc.stashkevich.com"
+public_port = 25565
+# Публичный порт для подключения Minecraft Bedrock. Удалите поле, если Bedrock выключен.
+public_bedrock_port = 19132
 # Необязательная папка сервера с журналами и статистикой. Для локального сервера по умолчанию берётся control.directory.
 # history_directory = "../mc.stashkevich.com"
 # Необязательная папка мира со статистикой. По умолчанию берётся level-name из server.properties.
@@ -96,6 +101,9 @@ source = "terraria_viewer"
 host = "127.0.0.1"
 # TCP-порт игрового сервера Terraria.
 port = 7777
+# Публичный адрес и порт для игроков. Бот выводит их в сообщении.
+public_host = "terka.stashkevich.com"
+public_port = 7777
 # Полный URL API tMapOnline, которое отдаёт число и имена игроков.
 url = "http://127.0.0.1:8765/api/sidebar-status"
 # Необязательная папка с player-history.json для чтения истории при недоступности сервера. Ниже значение по умолчанию для локального сервера.

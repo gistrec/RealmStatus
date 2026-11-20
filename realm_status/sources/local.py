@@ -26,7 +26,7 @@ class MinecraftServer:
         try:
             result = await self.server.async_status(tries=1)
         except ConnectionRefusedError:
-            return Online(0, note="сервер остановлен", players=players)
+            return Online(0, note="сервер выключен", players=players)
         except (OSError, ValueError):
             return Online(None, note="статус недоступен", players=players)
         names = tuple(sorted(player.name for player in result.players.sample or ()))
@@ -115,7 +115,7 @@ class TerrariaServer:
             )
         except ConnectionRefusedError:
             players, _ = await asyncio.to_thread(self._history, stopped=True)
-            return Online(0, note="сервер остановлен", players=players)
+            return Online(0, note="сервер выключен", players=players)
         except (OSError, TimeoutError):
             players, _ = await asyncio.to_thread(self._history)
             return Online(None, note="статус недоступен", players=players)

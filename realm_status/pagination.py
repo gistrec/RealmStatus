@@ -15,22 +15,22 @@ def status_pages(message: StatusMessage) -> tuple[str, ...]:
     if _fits(rendered):
         return (rendered,)
 
-    sections = [message.header]
+    sections: list[StatusSection] = []
     pages = []
     for section in message.sections:
         current = []
         for block in section.blocks:
-            candidate = str(StatusSection(section.title, (*current, block)))
-            if not _fits("\n\n".join([*sections, candidate, message.footer])):
+            candidate = StatusSection(section.title, (*current, block))
+            if not _fits(message.render_sections([*sections, candidate])):
                 if current:
-                    sections.append(str(StatusSection(section.title, tuple(current))))
-                pages.append("\n\n".join([*sections, message.footer]))
-                sections = [message.header]
+                    sections.append(StatusSection(section.title, tuple(current)))
+                pages.append(message.render_sections(sections))
+                sections = []
                 current = []
             current.append(block)
-        if not section.blocks and not _fits("\n\n".join([*sections, section.title, message.footer])):
-            pages.append("\n\n".join([*sections, message.footer]))
-            sections = [message.header]
-        sections.append(str(StatusSection(section.title, tuple(current))))
-    pages.append("\n\n".join([*sections, message.footer]))
+        if not section.blocks and not _fits(message.render_sections([*sections, section])):
+            pages.append(message.render_sections(sections))
+            sections = []
+        sections.append(StatusSection(section.title, tuple(current)))
+    pages.append(message.render_sections(sections))
     return tuple(pages)
