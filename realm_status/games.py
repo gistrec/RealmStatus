@@ -2,6 +2,7 @@
 
 import os
 import re
+from hashlib import sha256
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,9 +11,11 @@ from urllib.parse import urlsplit
 from stardew_valley import StardewValleyService
 
 from .control import ServerControl
+from .history import PlayerRoster
 from .settings import LocalConfig
 from .sources.legacy import MinecraftRealms, StardewValley
 from .sources.local import MinecraftServer, TerrariaServer
+from .sources.minecraft_history import MinecraftHistory
 from .status import Game, StatusBoard, StatusSource
 
 GAME_ID = re.compile(r"[a-z][a-z0-9_]{0,25}")
@@ -58,13 +61,28 @@ class GameProfile:
 
     def make_source(self) -> StatusSource:
         if self.source == "minecraft_java":
-            return MinecraftServer(self.value("host", str), self.port())
+            host = self.value("host", str)
+            directory = self.options.get("history_directory")
+            if directory is None and host in LOCAL_HOSTS and "control" in self.options:
+                control = _table(self.options["control"], f"{self.name}.control")
+                directory = control.get("directory")
+            history = None
+            if directory is not None:
+                root = self._local_path(directory, "history_directory")
+                world = self.options.get("world_directory")
+                history = MinecraftHistory(root, self._local_path(world, "world_directory") if world else None)
+            return MinecraftServer(host, self.port(), history)
         if self.source == "minecraft_realms":
             return MinecraftRealms(self.realm_id())
         if self.source == "terraria_viewer":
             url = self.value("url", str)
             _validate_url(url, f"{self.name}.url")
-            return TerrariaServer(url, self.port(), host=self.value("host", str))
+            host = self.value("host", str)
+            directory = self.options.get("history_directory")
+            if directory is None and host in LOCAL_HOSTS:
+                directory = "~/Library/Application Support/tMapOnline"
+            history_dir = self._local_path(directory, "history_directory") if directory is not None else None
+            return TerrariaServer(url, self.port(), host=host, history_dir=history_dir)
         if self.source == "stardew_api":
             base_url = os.getenv("STARDEW_API_BASE_URL") or ""
             if "base_url" in self.options:
@@ -75,6 +93,18 @@ class GameProfile:
                 raise ValueError("Заполните STARDEW_API_TOKEN в .env.")
             return StardewValley(StardewValleyService(base_url=base_url, api_token=token))
         raise ValueError(f"games.{self.id}.source: неизвестный источник {self.source!r}.")
+
+    def _local_path(self, value: object, key: str) -> Path:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{self.name}.{key}: укажите путь к папке.")
+        return (self.config_dir / Path(value).expanduser()).resolve()
+
+    def history_key(self) -> str:
+        parts = tuple(self.options.get(key) for key in ("host", "port", "url", "world_id", "world_directory"))
+        if self.source == "stardew_api":
+            parts += (self.options.get("base_url") or os.getenv("STARDEW_API_BASE_URL"),)
+        identity = sha256(repr(parts).encode()).hexdigest()[:16]
+        return f"{self.id}:{self.source}:{identity}"
 
     def make_control(self) -> ServerControl | None:
         if "control" not in self.options:
@@ -130,17 +160,24 @@ class GameCatalog:
             )
         return cls(tuple(profiles))
 
-    def build(self) -> tuple[StatusBoard, dict[str, ServerControl]]:
+    def build(
+        self, roster: PlayerRoster | None = None, *, poll_interval: int = 60,
+        show_offline_players: bool = True,
+    ) -> tuple[StatusBoard, dict[str, ServerControl]]:
         games = []
         controls = {}
         for profile in self.profiles:
             games.append(Game(
-                profile.title, profile.icon, profile.make_source(), SOURCE_EMOJI_KEYS[profile.source]
+                profile.title, profile.icon, profile.make_source(),
+                SOURCE_EMOJI_KEYS[profile.source], profile.history_key(),
             ))
             control = profile.make_control()
             if control is not None:
                 controls[profile.id] = control
-        return StatusBoard(tuple(games)), controls
+        board = StatusBoard(
+            tuple(games), roster, poll_interval=poll_interval, show_offline_players=show_offline_players
+        )
+        return board, controls
 
     def realms_profile(self, game_id: str | None) -> GameProfile:
         matches = [

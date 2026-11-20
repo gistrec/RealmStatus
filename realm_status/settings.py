@@ -42,10 +42,16 @@ class TelegramSettings:
     allow_all_users: bool
     interval: int
     chat_username: str | None
+    show_offline_players: bool = True
 
     @classmethod
     def load(cls, config: LocalConfig) -> "TelegramSettings":
         table = config.data.get("telegram")
+        if table is not None and not isinstance(table, dict):
+            raise ValueError("telegram: ожидается таблица TOML.")
+        show_offline_players = (table or {}).get("show_offline_players", True)
+        if type(show_offline_players) is not bool:
+            raise ValueError("telegram.show_offline_players: ожидается true или false.")
         if config.using_template or table is None:
             chat_id = int(os.getenv("TELEGRAM_CHAT_ID", str(DEFAULT_CHAT_ID)))
             table = {
@@ -62,9 +68,6 @@ class TelegramSettings:
                 "update_interval_seconds": int(os.getenv("UPDATE_INTERVAL_SECONDS", "60")),
                 "chat_username": os.getenv("TELEGRAM_CHAT_USERNAME", ""),
             }
-        if not isinstance(table, dict):
-            raise ValueError("telegram: ожидается таблица TOML.")
-
         chat_id = table.get("chat_id", DEFAULT_CHAT_ID)
         message_id = table.get("message_id", 38)
         interval = table.get("update_interval_seconds", 60)
@@ -100,6 +103,7 @@ class TelegramSettings:
             allow_all_users=allow_all_users,
             interval=interval,
             chat_username=chat_username.strip() or None,
+            show_offline_players=show_offline_players,
         )
 
     def allows_command(self, chat_id: int | None, user_id: int | None) -> bool:

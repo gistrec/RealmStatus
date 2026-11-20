@@ -12,6 +12,7 @@ from .emoji.images import EmojiImages
 from .emoji.pack import EmojiPack
 from .emoji.settings import EmojiSettings
 from .games import GameCatalog
+from .history import PlayerRoster
 from .lifecycle import STATE, BotRuntime, bot_lock
 from .settings import PROJECT_DIR, LocalConfig, TelegramSettings, load_environment, required
 from .telegram import TelegramBot
@@ -21,7 +22,10 @@ async def run(preview: bool, on_ready: Callable[[], None] | None = None) -> None
     local_config = LocalConfig.load()
     config = TelegramSettings.load(local_config)
     emoji_settings = EmojiSettings.load(local_config)
-    board, controls = GameCatalog.load(local_config).build()
+    roster = PlayerRoster(STATE / "player-roster.json", writable=not preview)
+    board, controls = GameCatalog.load(local_config).build(
+        roster, poll_interval=config.interval, show_offline_players=config.show_offline_players
+    )
     tunnel = TunnelControl.load(local_config)
     if preview:
         print(await board.render())

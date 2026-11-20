@@ -3,22 +3,16 @@
 import asyncio
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from .history import Online, PlayerRoster
+
 logger = logging.getLogger(__name__)
 PLAYER_EMOJI = "👤"
-
-
-@dataclass(frozen=True)
-class Online:
-    count: int | None
-    names: tuple[str, ...] = ()
-    note: str = ""
-    started_at: Mapping[str, float] = field(default_factory=dict)
 
 
 class StatusSource(Protocol):
@@ -31,12 +25,18 @@ class Game:
     icon: str
     source: StatusSource
     emoji_key: str = ""
+    history_key: str = ""
 
 
 class StatusBoard:
-    def __init__(self, games: tuple[Game, ...]) -> None:
+    def __init__(
+        self, games: tuple[Game, ...], roster: PlayerRoster | None = None,
+        *, poll_interval: int = 60, show_offline_players: bool = True,
+    ) -> None:
         self.games = games
-        self.joined_at: list[dict[str, float]] = [{} for _ in games]
+        self.roster = roster if roster is not None else PlayerRoster()
+        self.poll_interval = poll_interval
+        self.show_offline_players = show_offline_players
 
     async def _read(self, game: Game) -> Online:
         try:
@@ -67,50 +67,43 @@ class StatusBoard:
         sections = [f"{online_icon} <b>Онлайн:</b> {total}"]
         if not self.games:
             sections.append("— все игры отключены —")
-        for game, result, joined_at in zip(self.games, results, self.joined_at):
-            self._observe(result, joined_at, now.timestamp())
+        timestamp = now.timestamp()
+        for game, result in zip(self.games, results):
+            history_key = game.history_key or game.title
+            records = self.roster.update(history_key, result, timestamp, self.poll_interval)
+            if not self.show_offline_players:
+                records = [entry for entry in records if entry[1]]
             count = "—" if result.count is None else str(result.count)
             icon = _icon(icons, game.emoji_key, game.icon)
-            lines = [f"{icon} <b>{escape(game.title)}:</b> {count}"]
+            title = escape(" ".join(game.title.split())[:128])
+            lines = [f"{icon} <b>{title}:</b> {count}"]
             if result.note:
                 lines.append(f"— {escape(result.note)} —")
-            elif result.count == 0:
+            elif not records and result.count == 0:
                 lines.append("— никого нет —")
-            else:
-                names = result.names[:15]
-                for name in names:
-                    nick = escape(" ".join(name.split())[:48])
-                    head = heads.get((game.emoji_key, name.casefold())) if heads else None
-                    if head is not None:
-                        nick = f'<tg-emoji emoji-id="{head}">{PLAYER_EMOJI}</tg-emoji> {nick}'
-                    if game.emoji_key in {"minecraft", "terraria"}:
-                        start = joined_at[name.casefold()]
-                        nick += f": играет {_duration(now.timestamp() - start)}"
-                    else:
-                        nick = f"• {nick}"
-                    lines.append(nick)
-                if result.count is not None and result.count > len(names):
-                    remaining = result.count - len(names)
-                    lines.append(f"— без отображения ников: {remaining} —")
+            for player, online in records:
+                nick = escape(" ".join(player.name.split())[:48])
+                head = heads.get((game.emoji_key, player.name.casefold())) if heads else None
+                if head is not None:
+                    nick = f'<tg-emoji emoji-id="{head}">{PLAYER_EMOJI}</tg-emoji> {nick}'
+                if online and player.started_at is not None:
+                    activity = f"играет {_duration(timestamp - player.started_at)}"
+                elif player.started_at is not None:
+                    activity = "текущий статус неизвестен"
+                elif player.last_seen is not None:
+                    activity = _last_played(timestamp - player.last_seen)
+                else:
+                    activity = "время последней игры неизвестно"
+                lines.append(f"{nick}: {activity}")
+            if result.count is not None and result.count > len(result.names):
+                lines.append(f"— онлайн без ников: {result.count - len(result.names)} —")
             sections.append("\n".join(lines))
 
+        self.roster.save()
         updated = now.strftime("%H:%M")
         clock = _icon(icons, "minecraft-clock", "🕒")
         sections.append(f"{clock} <i>Обновлено: {updated} (МСК)</i>")
         return "\n\n".join(sections)
-
-    @staticmethod
-    def _observe(result: Online, joined_at: dict[str, float], now: float) -> None:
-        names = {name.casefold() for name in result.names}
-        # The Java status sample may omit online players; only a full list proves departure.
-        if result.count is not None and len(names) >= result.count:
-            for name in joined_at.keys() - names:
-                del joined_at[name]
-        for name in names:
-            if name in result.started_at:
-                joined_at[name] = min(now, result.started_at[name])
-            else:
-                joined_at.setdefault(name, now)
 
 
 def _icon(icons: Mapping[str, tuple[int, str]] | None, key: str, fallback: str) -> str:
@@ -125,3 +118,21 @@ def _duration(seconds: float) -> str:
     if hours:
         return f"{hours} ч {minutes} мин"
     return f"{minutes} мин"
+
+
+def _last_played(seconds: float) -> str:
+    minutes = max(0, int(seconds)) // 60
+    if minutes == 0:
+        return "играл недавно"
+    if minutes < 60:
+        value, units = minutes, ("минуту", "минуты", "минут")
+    elif minutes < 48 * 60:
+        value, units = minutes // 60, ("час", "часа", "часов")
+    else:
+        value, units = minutes // (24 * 60), ("день", "дня", "дней")
+    if 11 <= value % 100 <= 14:
+        unit = units[2]
+    else:
+        last_digit = value % 10
+        unit = units[0] if last_digit == 1 else units[1] if 2 <= last_digit <= 4 else units[2]
+    return f"играл {value} {unit} назад"

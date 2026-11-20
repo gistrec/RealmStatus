@@ -5,13 +5,14 @@ import logging
 import re
 from collections.abc import Callable
 
-from telethon import TelegramClient, errors, events, utils
+from telethon import Button, TelegramClient, errors, events, utils
 from telethon.extensions import html
-from telethon.tl.types import MessageEntityCustomEmoji
+from telethon.tl.types import MessageEntityCustomEmoji, ReplyInlineMarkup
 
 from .control import ServerControl, TunnelControl
 from .emoji.pack import EmojiPack, EmojiPackError
 from .games import GAME_ID
+from .pagination import status_pages
 from .settings import TelegramSettings
 from .status import PLAYER_EMOJI, StatusBoard
 
@@ -44,6 +45,9 @@ class TelegramBot:
         self.refresh = asyncio.Event()
         self.target_peer = None
         self.username = ""
+        self.pages: tuple[str, ...] = ()
+        self.page = 0
+        self.page_lock = asyncio.Lock()
 
     async def _target(self):
         if self.target_peer is None:
@@ -59,7 +63,6 @@ class TelegramBot:
             self.refresh.clear()
             delay = self.config.interval
             try:
-                peer = await self._target()
                 pack = self.emoji_pack
                 snapshot = (pack.icons, pack.heads) if pack else None
                 if snapshot != self.emoji_snapshot:
@@ -70,7 +73,11 @@ class TelegramBot:
                 message = await self.board.render(
                     pack.icons if pack else None, pack.heads if pack else None
                 )
-                await self._edit_status(peer, message)
+                pages = status_pages(message)
+                async with self.page_lock:
+                    self.pages = pages
+                    self.page = min(self.page, len(pages) - 1)
+                    await self._show_page(await self._target())
             except errors.MessageNotModifiedError:
                 pass
             except errors.FloodWaitError as error:
@@ -99,11 +106,37 @@ class TelegramBot:
             except TimeoutError:
                 pass
 
-    async def _edit_status(self, peer, message: str) -> None:
+    async def _show_page(self, peer) -> None:
+        buttons = []
+        if self.page > 0:
+            buttons.append(Button.inline("‹ Назад", f"roster:{self.page - 1}"))
+        if self.page + 1 < len(self.pages):
+            buttons.append(Button.inline("Далее ›", f"roster:{self.page + 1}"))
+        await self._edit_status(peer, self.pages[self.page], buttons or ReplyInlineMarkup([]))
+
+    async def on_roster_page(self, event: events.CallbackQuery.Event) -> None:
+        if event.chat_id != self.config.chat_id or event.message_id != self.config.message_id:
+            return
+        page = int(event.pattern_match.group(1))
+        await event.answer()
+        async with self.page_lock:
+            if page >= len(self.pages) or page == self.page:
+                return
+            previous_page = self.page
+            self.page = page
+            try:
+                await self._show_page(await self._target())
+            except errors.MessageNotModifiedError:
+                pass
+            except (OSError, ValueError, errors.RPCError) as error:
+                self.page = previous_page
+                logger.warning("Cannot open roster page (%s)", type(error).__name__)
+
+    async def _edit_status(self, peer, message: str, buttons) -> None:
         text, entities = html.parse(message)
         try:
             await self.client.edit_message(
-                peer, self.config.message_id, text, formatting_entities=entities,
+                peer, self.config.message_id, text, formatting_entities=entities, buttons=buttons,
             )
         except (
             errors.DocumentInvalidError, errors.EmojiInvalidError,
@@ -118,7 +151,7 @@ class TelegramBot:
                 entity for entity in plain if not isinstance(entity, MessageEntityCustomEmoji)
             ]
             await self.client.edit_message(
-                peer, self.config.message_id, text, formatting_entities=plain,
+                peer, self.config.message_id, text, formatting_entities=plain, buttons=buttons,
             )
 
     async def on_message(self, event: events.NewMessage.Event) -> None:
@@ -178,6 +211,9 @@ class TelegramBot:
             raise ValueError("Telethon-сессия принадлежит другому аккаунту.")
         self.username = account.username.lower()
         self.client.add_event_handler(self.on_message, events.NewMessage(incoming=True))
+        self.client.add_event_handler(
+            self.on_roster_page, events.CallbackQuery(pattern=rb"^roster:(\d+)$")
+        )
         background = [asyncio.create_task(self._publish())]
         if self.emoji_pack is not None:
             background.append(asyncio.create_task(

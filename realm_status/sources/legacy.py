@@ -4,7 +4,7 @@ import asyncio
 
 from stardew_valley import StardewValleyService
 
-from ..status import Online
+from ..history import Online, PlayerHistory
 
 
 class MinecraftRealms:
@@ -14,8 +14,8 @@ class MinecraftRealms:
     def _read(self) -> Online:
         from auth.realms import RealmsService
 
-        names = RealmsService().online_names(self.world_id)
-        return Online(len(names), tuple(names))
+        names = tuple(RealmsService().online_names(self.world_id))
+        return Online(len(names), names)
 
     async def read(self) -> Online:
         return await asyncio.to_thread(self._read)
@@ -26,5 +26,7 @@ class StardewValley:
         self.service = service
 
     async def read(self) -> Online:
-        names = await asyncio.to_thread(self.service.get_online_player_names)
-        return Online(len(names), tuple(sorted(names)))
+        response = await asyncio.to_thread(self.service.get_players)
+        players = response["players"]
+        names = tuple(player["name"] for player in players if player["isOnline"])
+        return Online(len(names), names, players=tuple(PlayerHistory(player["name"]) for player in players))
